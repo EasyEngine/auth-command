@@ -40,7 +40,7 @@ class Secure_Command extends EE_Command {
 	 * : Password for http auth
 	 */
 	public function __invoke( $args, $assoc_args ) {
-
+		$this->db        = EE::db();
 		$this->site_name = $args[0];
 		EE::debug( "ee secure start, Site: $this->site_name" );
 		if ( ! $this->db::site_in_db( $this->site_name ) ) {
@@ -54,10 +54,18 @@ class Secure_Command extends EE_Command {
 			$this->user = $this->get_val( $args, 1, 'user name', 'easyengine' );
 			$this->pass = $this->get_val( $args, 2, 'password', EE\Utils\random_password() );
 
+			EE::debug( 'Verifying htpasswd is present.' );
+			$check_htpasswd_present = EE\Utils\default_launch( "docker exec $global_reverse_proxy sh -c 'command -v htpasswd'" );
+			if ( ! $check_htpasswd_present ) {
+				EE::error( "Could not find apache2-utils installed in $global_reverse_proxy." );
+			}
+
 			EE::debug( 'Creating auth file.' );
-			EE::launch( "docker exec $global_reverse_proxy htpasswd -bc /etc/nginx/htpasswd/$this->site_name $this->user $this->pass" );
+			EE\Utils\default_launch( "docker exec $global_reverse_proxy htpasswd -bc /etc/nginx/htpasswd/$this->site_name $this->user $this->pass" );
+
 			EE::log( 'Reloading global reverse proxy.' );
 			$this->reload();
+
 			EE::log( "Auth successfully added to $this->site_name" );
 		} else {
 			EE::error( 'Only --auth is supported so far.' );
@@ -76,6 +84,6 @@ class Secure_Command extends EE_Command {
 	}
 
 	private function reload() {
-		EE::launch( 'docker exec ee-nginx-proxy sh -c "/app/docker-entrypoint.sh /usr/local/bin/docker-gen /app/nginx.tmpl /etc/nginx/conf.d/default.conf; /usr/sbin/nginx -s reload"' );
+		EE\Utils\default_launch( 'docker exec ee-nginx-proxy sh -c "/app/docker-entrypoint.sh /usr/local/bin/docker-gen /app/nginx.tmpl /etc/nginx/conf.d/default.conf; /usr/sbin/nginx -s reload"' );
 	}
 }
