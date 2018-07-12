@@ -1,6 +1,6 @@
 {
     "name": "easyengine/secure-command",
-    "description": "",
+    "description": "Configure HTTP auth for EasyEngine site.",
     "type": "ee-cli-package",
     "homepage": "https://github.com/easyengine/secure-command",
     "license": "MIT",
