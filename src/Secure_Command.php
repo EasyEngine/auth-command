@@ -42,6 +42,7 @@ class Secure_Command extends EE_Command {
 	public function __invoke( $args, $assoc_args ) {
 
 		$this->site_name = $args[0];
+		EE::debug( "ee secure start, Site: $this->site_name" );
 		if ( ! $this->db::site_in_db( $this->site_name ) ) {
 			EE::error( "No site with name `$this->site_name` found." );
 		}
@@ -53,8 +54,11 @@ class Secure_Command extends EE_Command {
 			$this->user = $this->get_val( $args, 1, 'user name', 'easyengine' );
 			$this->pass = $this->get_val( $args, 2, 'password', EE\Utils\random_password() );
 
+			EE::debug( 'Creating auth file.' );
 			EE::launch( "docker exec $global_reverse_proxy htpasswd -bc /etc/nginx/htpasswd/$this->site_name $this->user $this->pass" );
+			EE::log( 'Reloading global reverse proxy.' );
 			$this->reload();
+			EE::log( "Auth successfully added to $this->site_name" );
 		} else {
 			EE::error( 'Only --auth is supported so far.' );
 		}
