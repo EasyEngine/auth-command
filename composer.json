@@ -1,8 +1,8 @@
 {
-    "name": "easyengine/secure-command",
+    "name": "easyengine/auth-command",
     "description": "Configure HTTP auth for EasyEngine site.",
     "type": "ee-cli-package",
-    "homepage": "https://github.com/easyengine/secure-command",
+    "homepage": "https://github.com/easyengine/auth-command",
     "license": "MIT",
     "authors": [],
     "minimum-stability": "dev",
@@ -11,7 +11,7 @@
         "psr-4": {
             "": "src/"
         },
-        "files": [ "secure-command.php" ]
+        "files": [ "auth-command.php" ]
     },
     "extra": {
         "branch-alias": {
@@ -19,7 +19,7 @@
         },
         "bundled": true,
         "commands": [
-            "secure"
+            "auth"
         ]
     }
 }

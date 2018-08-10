@@ -6,17 +6,17 @@
  * ## EXAMPLES
  *
  *        # Add auth to a site
- *        $ ee secure example.com --auth
+ *        $ ee auth create example.com --user=test --pass=test
  *
- *        # Add auth without prompt
- *        $ ee secure example.com --auth [optional username] [optional password]
+ *        # Delete auth from a site
+ *        $ ee auth delete example.com --user=test
  *
  * @package ee-cli
  */
 
 use EE\Utils;
 
-class Secure_Command extends EE_Command {
+class Auth_Command extends EE_Command {
 	private $user;
 	private $pass;
 	private $site_name;

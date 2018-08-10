@@ -9,4 +9,4 @@ if ( file_exists( $autoload ) ) {
 	require_once $autoload;
 }
 
-EE::add_command( 'secure', 'Secure_Command' );
+EE::add_command( 'auth', 'Auth_Command' );
