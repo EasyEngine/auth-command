@@ -107,6 +107,52 @@ class Auth_Command extends EE_Command {
 	}
 
 	/**
+	 * Lists http auth users of a site.
+	 *
+	 * ## OPTIONS
+	 *
+	 * [<site-name>]
+	 * : Name of website.
+	 *
+	 * [--format=<format>]
+	 * : Render output in a particular format.
+	 * ---
+	 * default: table
+	 * options:
+	 *   - table
+	 *   - csv
+	 *   - yaml
+	 *   - json
+	 *   - count
+	 *   - text
+	 * ---
+	 */
+	public function list( $args, $assoc_args ) {
+
+		$args   = EE\SiteUtils\auto_site_name( $args, 'auth', __FUNCTION__ );
+		$format = EE\Utils\get_flag_value( $assoc_args, 'format' );
+		$this->populate_site_info( $args );
+		$file = EE_CONF_ROOT . '/nginx/htpasswd/' . $this->site['name'];
+		if ( $this->fs->exists( $file ) ) {
+			$user_lines = explode( PHP_EOL, trim( file_get_contents( $file ) ) );
+			foreach ( $user_lines as $line ) {
+				$users[]['users'] = strstr( $line, ':', true );
+			}
+
+			if ( 'text' === $format ) {
+				foreach ( $users as $user ) {
+					EE::log( $user['users'] );
+				}
+			} else {
+				$formatter = new EE\Formatter( $assoc_args, [ 'users' ] );
+				$formatter->display_items( $users );
+			}
+		} else {
+			EE::error( sprintf( 'http auth not enabled on %s', $this->site['name'] ) );
+		}
+	}
+
+	/**
 	 * Function to reload the global reverse proxy to update the effect of changes done.
 	 */
 	private function reload() {
