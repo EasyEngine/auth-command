@@ -80,6 +80,33 @@ class Auth_Command extends EE_Command {
 	}
 
 	/**
+	 * Deletes http auth for a site. Default: removes http auth from site. If `--user` is passed it removes that
+	 * specific user.
+	 *
+	 * ## OPTIONS
+	 *
+	 * [<site-name>]
+	 * : Name of website.
+	 *
+	 * [--user=<user>]
+	 * : Username that needs to be deleted.
+	 */
+	public function delete( $args, $assoc_args ) {
+
+		$args = EE\SiteUtils\auto_site_name( $args, 'auth', __FUNCTION__ );
+		$this->populate_site_info( $args );
+		$user = EE\Utils\get_flag_value( $assoc_args, 'user' );
+
+		if ( $user ) {
+			EE::exec( sprintf( 'docker exec %s htpasswd -D /etc/nginx/htpasswd/%s %s', EE_PROXY_TYPE, $this->site['name'], $user ), true, true );
+		} else {
+			$this->fs->remove( EE_CONF_ROOT . '/nginx/htpasswd/' . $this->site['name'] );
+			EE::log( sprintf( 'http auth removed for %s', $this->site['name'] ) );
+		}
+		$this->reload();
+	}
+
+	/**
 	 * Function to reload the global reverse proxy to update the effect of changes done.
 	 */
 	private function reload() {
