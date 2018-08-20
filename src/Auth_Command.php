@@ -24,16 +24,13 @@ class Auth_Command extends EE_Command {
 	private $fs;
 
 	/**
-	 * @var array $site Associative array containing essential site related information.
+	 * @var array $db Object containing essential site related information.
 	 */
-	private $site;
-
 	private $db;
 
 	public function __construct() {
 
 		$this->fs = new Filesystem();
-		$this->db = EE::db();
 	}
 
 
@@ -55,10 +52,13 @@ class Auth_Command extends EE_Command {
 	 */
 	public function create( $args, $assoc_args ) {
 
-		$args = EE\SiteUtils\auto_site_name( $args, 'auth', __FUNCTION__ );
-		$this->populate_site_info( $args );
+		$args     = EE\SiteUtils\auto_site_name( $args, 'auth', __FUNCTION__ );
+		$this->db = Site::find( EE\Utils\remove_trailing_slash( $args[0] ) );
+		if ( ! $this->db || ! $this->db->site_enabled ) {
+			EE::error( sprintf( 'Site %s does not exist / is not enabled.', $args[0] ) );
+		}
 
-		EE::debug( sprintf( 'ee auth start, Site: %s', $this->site['name'] ) );
+		EE::debug( sprintf( 'ee auth start, Site: %s', $this->db->site_url ) );
 
 		$user = EE\Utils\get_flag_value( $assoc_args, 'user', 'easyengine' );
 		$pass = EE\Utils\get_flag_value( $assoc_args, 'pass', EE\Utils\random_password() );
@@ -68,13 +68,13 @@ class Auth_Command extends EE_Command {
 		if ( ! $check_htpasswd_present ) {
 			EE::error( sprintf( 'Could not find apache2-utils installed in %s.', EE_PROXY_TYPE ) );
 		}
-		$params = $this->fs->exists( EE_CONF_ROOT . '/nginx/htpasswd/' . $this->site['name'] ) ? 'b' : 'bc';
-		EE::exec( sprintf( 'docker exec %s htpasswd -%s /etc/nginx/htpasswd/%s %s %s', EE_PROXY_TYPE, $params, $this->site['name'], $user, $pass ) );
+		$params = $this->fs->exists( EE_CONF_ROOT . '/nginx/htpasswd/' . $this->db->site_url ) ? 'b' : 'bc';
+		EE::exec( sprintf( 'docker exec %s htpasswd -%s /etc/nginx/htpasswd/%s %s %s', EE_PROXY_TYPE, $params, $this->db->site_url, $user, $pass ) );
 
 		EE::log( 'Reloading global reverse proxy.' );
 		$this->reload();
 
-		EE::log( sprintf( 'Auth successfully updated for %s scope. New values added/updated:', $this->site['name'] ) );
+		EE::log( sprintf( 'Auth successfully updated for %s scope. New values added/updated:', $this->db->site_url ) );
 		EE::log( 'User:' . $user );
 		EE::log( 'Pass:' . $pass );
 	}
@@ -93,15 +93,18 @@ class Auth_Command extends EE_Command {
 	 */
 	public function delete( $args, $assoc_args ) {
 
-		$args = EE\SiteUtils\auto_site_name( $args, 'auth', __FUNCTION__ );
-		$this->populate_site_info( $args );
+		$args     = EE\SiteUtils\auto_site_name( $args, 'auth', __FUNCTION__ );
+		$this->db = Site::find( EE\Utils\remove_trailing_slash( $args[0] ) );
+		if ( ! $this->db || ! $this->db->site_enabled ) {
+			EE::error( sprintf( 'Site %s does not exist / is not enabled.', $args[0] ) );
+		}
 		$user = EE\Utils\get_flag_value( $assoc_args, 'user' );
 
 		if ( $user ) {
-			EE::exec( sprintf( 'docker exec %s htpasswd -D /etc/nginx/htpasswd/%s %s', EE_PROXY_TYPE, $this->site['name'], $user ), true, true );
+			EE::exec( sprintf( 'docker exec %s htpasswd -D /etc/nginx/htpasswd/%s %s', EE_PROXY_TYPE, $this->db->site_url, $user ), true, true );
 		} else {
-			$this->fs->remove( EE_CONF_ROOT . '/nginx/htpasswd/' . $this->site['name'] );
-			EE::log( sprintf( 'http auth removed for %s', $this->site['name'] ) );
+			$this->fs->remove( EE_CONF_ROOT . '/nginx/htpasswd/' . $this->db->site_url );
+			EE::log( sprintf( 'http auth removed for %s', $this->db->site_url ) );
 		}
 		$this->reload();
 	}
@@ -129,10 +132,10 @@ class Auth_Command extends EE_Command {
 	 */
 	public function list( $args, $assoc_args ) {
 
-		$args   = EE\SiteUtils\auto_site_name( $args, 'auth', __FUNCTION__ );
-		$format = EE\Utils\get_flag_value( $assoc_args, 'format' );
-		$this->populate_site_info( $args );
-		$file = EE_CONF_ROOT . '/nginx/htpasswd/' . $this->site['name'];
+		$args     = EE\SiteUtils\auto_site_name( $args, 'auth', __FUNCTION__ );
+		$format   = EE\Utils\get_flag_value( $assoc_args, 'format' );
+		$this->db = Site::find( EE\Utils\remove_trailing_slash( $args[0] ) );
+		$file     = EE_CONF_ROOT . '/nginx/htpasswd/' . $this->db->site_url;
 		if ( $this->fs->exists( $file ) ) {
 			$user_lines = explode( PHP_EOL, trim( file_get_contents( $file ) ) );
 			foreach ( $user_lines as $line ) {
@@ -148,7 +151,7 @@ class Auth_Command extends EE_Command {
 				$formatter->display_items( $users );
 			}
 		} else {
-			EE::error( sprintf( 'http auth not enabled on %s', $this->site['name'] ) );
+			EE::error( sprintf( 'http auth not enabled on %s', $this->db->site_url ) );
 		}
 	}
 
@@ -190,17 +193,17 @@ class Auth_Command extends EE_Command {
 		$command = array_shift( $args );
 		$global  = false;
 		if ( isset( $args[0] ) && 'global' === $args[0] ) {
-			$this->site['name'] = $args[0];
-			$global             = true;
+			$this->db = (object) [ 'site_url' => $args[0] ];
+			$global   = true;
 		} else {
-			$args = EE\SiteUtils\auto_site_name( $args, 'auth', __FUNCTION__ . ' ' . $command );
-			$this->populate_site_info( $args );
+			$args     = EE\SiteUtils\auto_site_name( $args, 'auth', __FUNCTION__ . ' ' . $command );
+			$this->db = Site::find( EE\Utils\remove_trailing_slash( $args[0] ) );
 		}
 
 		$ip = EE\Utils\get_flag_value( $assoc_args, 'ip' );
 
 		$file         = EE_CONF_ROOT . '/nginx/vhost.d/';
-		$file         .= $global ? 'default_acl' : $this->site['name'] . '_acl';
+		$file         .= $global ? 'default_acl' : $this->db->site_url . '_acl';
 		$user_ips     = array_filter( explode( ',', $ip ), 'strlen' );
 		$existing_ips = $this->get_ips_from_file( $global );
 
@@ -251,7 +254,7 @@ class Auth_Command extends EE_Command {
 	private function whitelist_list( $file, $user_ips, $existing_ips ) {
 
 		if ( ! empty( $existing_ips ) ) {
-			EE::log( 'Whitelisted IPs for %s scope', $this->site['name'] );
+			EE::log( 'Whitelisted IPs for %s scope', $this->db->site_url );
 			foreach ( $existing_ips as $ips ) {
 				EE::log( $ips );
 			}
@@ -298,7 +301,7 @@ class Auth_Command extends EE_Command {
 	private function get_ips_from_file( $global ) {
 
 		$file         = EE_CONF_ROOT . '/nginx/vhost.d/';
-		$file         .= $global ? 'default_acl' : $this->site['name'] . '_acl';
+		$file         .= $global ? 'default_acl' : $this->db->site_url . '_acl';
 		$existing_ips = [];
 		if ( $this->fs->exists( $file ) ) {
 			$existing_ips_in_file = array_filter( explode( PHP_EOL, trim( file_get_contents( $file ) ) ), 'strlen' );
@@ -310,22 +313,4 @@ class Auth_Command extends EE_Command {
 		return $existing_ips;
 	}
 
-	/**
-	 * Populate basic site info from db.
-	 */
-	private function populate_site_info( $args ) {
-
-		$this->site['name'] = EE\Utils\remove_trailing_slash( $args[0] );
-
-		if ( EE::db()::site_in_db( $this->site['name'] ) ) {
-
-			$db_select = EE::db()::select( [], [ 'sitename' => $this->site['name'] ], 'sites', 1 );
-
-			$this->site['type']    = $db_select['site_type'];
-			$this->site['root']    = $db_select['site_path'];
-			$this->site['command'] = $db_select['site_command'];
-		} else {
-			EE::error( sprintf( 'Site %s does not exist.', $this->site['name'] ) );
-		}
-	}
 }
