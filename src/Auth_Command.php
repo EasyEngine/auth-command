@@ -52,11 +52,7 @@ class Auth_Command extends EE_Command {
 	 */
 	public function create( $args, $assoc_args ) {
 
-		$args     = EE\SiteUtils\auto_site_name( $args, 'auth', __FUNCTION__ );
-		$this->db = Site::find( EE\Utils\remove_trailing_slash( $args[0] ) );
-		if ( ! $this->db || ! $this->db->site_enabled ) {
-			EE::error( sprintf( 'Site %s does not exist / is not enabled.', $args[0] ) );
-		}
+		$global = $this->populate_info( $args, __FUNCTION__ );
 
 		EE::debug( sprintf( 'ee auth start, Site: %s', $this->db->site_url ) );
 
@@ -68,7 +64,8 @@ class Auth_Command extends EE_Command {
 		if ( ! $check_htpasswd_present ) {
 			EE::error( sprintf( 'Could not find apache2-utils installed in %s.', EE_PROXY_TYPE ) );
 		}
-		$params = $this->fs->exists( EE_CONF_ROOT . '/nginx/htpasswd/' . $this->db->site_url ) ? 'b' : 'bc';
+		$file   = $global ? 'default' : $this->db->site_url;
+		$params = $this->fs->exists( EE_CONF_ROOT . '/nginx/htpasswd/' . $file ) ? 'b' : 'bc';
 		EE::exec( sprintf( 'docker exec %s htpasswd -%s /etc/nginx/htpasswd/%s %s %s', EE_PROXY_TYPE, $params, $this->db->site_url, $user, $pass ) );
 
 		EE::log( 'Reloading global reverse proxy.' );
@@ -93,18 +90,15 @@ class Auth_Command extends EE_Command {
 	 */
 	public function delete( $args, $assoc_args ) {
 
-		$args     = EE\SiteUtils\auto_site_name( $args, 'auth', __FUNCTION__ );
-		$this->db = Site::find( EE\Utils\remove_trailing_slash( $args[0] ) );
-		if ( ! $this->db || ! $this->db->site_enabled ) {
-			EE::error( sprintf( 'Site %s does not exist / is not enabled.', $args[0] ) );
-		}
-		$user = EE\Utils\get_flag_value( $assoc_args, 'user' );
+		$global = $this->populate_info( $args, __FUNCTION__ );
+		$file   = $global ? 'default' : $this->db->site_url;
+		$user   = EE\Utils\get_flag_value( $assoc_args, 'user' );
 
 		if ( $user ) {
 			EE::exec( sprintf( 'docker exec %s htpasswd -D /etc/nginx/htpasswd/%s %s', EE_PROXY_TYPE, $this->db->site_url, $user ), true, true );
 		} else {
-			$this->fs->remove( EE_CONF_ROOT . '/nginx/htpasswd/' . $this->db->site_url );
-			EE::log( sprintf( 'http auth removed for %s', $this->db->site_url ) );
+			$this->fs->remove( EE_CONF_ROOT . '/nginx/htpasswd/' . $file );
+			EE::log( sprintf( 'http auth removed for %s scope', $this->db->site_url ) );
 		}
 		$this->reload();
 	}
@@ -132,10 +126,9 @@ class Auth_Command extends EE_Command {
 	 */
 	public function list( $args, $assoc_args ) {
 
-		$args     = EE\SiteUtils\auto_site_name( $args, 'auth', __FUNCTION__ );
-		$format   = EE\Utils\get_flag_value( $assoc_args, 'format' );
-		$this->db = Site::find( EE\Utils\remove_trailing_slash( $args[0] ) );
-		$file     = EE_CONF_ROOT . '/nginx/htpasswd/' . $this->db->site_url;
+		$global = $this->populate_info( $args, __FUNCTION__ );
+		$file   = EE_CONF_ROOT . '/nginx/htpasswd/' . ( $global ? 'default' : $this->db->site_url );
+		$format = EE\Utils\get_flag_value( $assoc_args, 'format' );
 		if ( $this->fs->exists( $file ) ) {
 			$user_lines = explode( PHP_EOL, trim( file_get_contents( $file ) ) );
 			foreach ( $user_lines as $line ) {
@@ -191,14 +184,7 @@ class Auth_Command extends EE_Command {
 		}
 
 		$command = array_shift( $args );
-		$global  = false;
-		if ( isset( $args[0] ) && 'global' === $args[0] ) {
-			$this->db = (object) [ 'site_url' => $args[0] ];
-			$global   = true;
-		} else {
-			$args     = EE\SiteUtils\auto_site_name( $args, 'auth', __FUNCTION__ . ' ' . $command );
-			$this->db = Site::find( EE\Utils\remove_trailing_slash( $args[0] ) );
-		}
+		$global  = $this->populate_info( $args, __FUNCTION__ . ' ' . $command );
 
 		$ip = EE\Utils\get_flag_value( $assoc_args, 'ip' );
 
@@ -311,6 +297,23 @@ class Auth_Command extends EE_Command {
 		}
 
 		return $existing_ips;
+	}
+
+	private function populate_info( $args, $command ) {
+
+		$global = false;
+		if ( isset( $args[0] ) && 'global' === $args[0] ) {
+			$this->db = (object) [ 'site_url' => $args[0] ];
+			$global   = true;
+		} else {
+			$args     = EE\SiteUtils\auto_site_name( $args, 'auth', $command );
+			$this->db = Site::find( EE\Utils\remove_trailing_slash( $args[0] ) );
+			if ( ! $this->db || ! $this->db->site_enabled ) {
+				EE::error( sprintf( 'Site %s does not exist / is not enabled.', $args[0] ) );
+			}
+		}
+
+		return $global;
 	}
 
 }
