@@ -14,6 +14,7 @@
  * @package ee-cli
  */
 
+use EE\Model\Site;
 use \Symfony\Component\Filesystem\Filesystem;
 
 class Auth_Command extends EE_Command {
@@ -66,12 +67,12 @@ class Auth_Command extends EE_Command {
 		}
 		$file   = $global ? 'default' : $this->db->site_url;
 		$params = $this->fs->exists( EE_CONF_ROOT . '/nginx/htpasswd/' . $file ) ? 'b' : 'bc';
-		EE::exec( sprintf( 'docker exec %s htpasswd -%s /etc/nginx/htpasswd/%s %s %s', EE_PROXY_TYPE, $params, $this->db->site_url, $user, $pass ) );
+		EE::exec( sprintf( 'docker exec %s htpasswd -%s /etc/nginx/htpasswd/%s %s %s', EE_PROXY_TYPE, $params, $file, $user, $pass ) );
 
 		EE::log( 'Reloading global reverse proxy.' );
 		$this->reload();
 
-		EE::log( sprintf( 'Auth successfully updated for %s scope. New values added/updated:', $this->db->site_url ) );
+		EE::log( sprintf( 'Auth successfully updated for `%s` scope. New values added/updated:', $this->db->site_url ) );
 		EE::log( 'User:' . $user );
 		EE::log( 'Pass:' . $pass );
 	}
@@ -98,7 +99,7 @@ class Auth_Command extends EE_Command {
 			EE::exec( sprintf( 'docker exec %s htpasswd -D /etc/nginx/htpasswd/%s %s', EE_PROXY_TYPE, $this->db->site_url, $user ), true, true );
 		} else {
 			$this->fs->remove( EE_CONF_ROOT . '/nginx/htpasswd/' . $file );
-			EE::log( sprintf( 'http auth removed for %s scope', $this->db->site_url ) );
+			EE::log( sprintf( 'http auth removed for `%s` scope', $this->db->site_url ) );
 		}
 		$this->reload();
 	}
@@ -207,10 +208,12 @@ class Auth_Command extends EE_Command {
 	 */
 	private function whitelist_create( $file, $user_ips, $existing_ips ) {
 
+		$file_content = '';
 		foreach ( $user_ips as $ip ) {
-			$file_content = "allow $ip;" . PHP_EOL;
+			$file_content .= "allow $ip;" . PHP_EOL;
 		}
 		$this->fs->dumpFile( $file, $file_content );
+		EE::log( sprintf( 'Created whitelist for `%s` scope with %s IP\'s.', $this->db->site_url, implode( ',', $user_ips ) ) );
 	}
 
 	/**
@@ -228,6 +231,7 @@ class Auth_Command extends EE_Command {
 			$file_content .= "allow $individual_ip;" . PHP_EOL;
 		}
 		$this->fs->dumpFile( $file, $file_content );
+		EE::log( sprintf( 'Appended %s IP\'s to whitelist of `%s` scope', implode( ',', $user_ips ), $this->db->site_url ) );
 	}
 
 	/**
@@ -240,10 +244,12 @@ class Auth_Command extends EE_Command {
 	private function whitelist_list( $file, $user_ips, $existing_ips ) {
 
 		if ( ! empty( $existing_ips ) ) {
-			EE::log( 'Whitelisted IPs for %s scope', $this->db->site_url );
+			EE::log( sprintf( 'Whitelisted IP\'s for `%s` scope', $this->db->site_url ) );
 			foreach ( $existing_ips as $ips ) {
 				EE::log( $ips );
 			}
+		} else {
+			EE::error( sprintf( 'No Whitelisted IP\'s found for `%s` scope', $this->db->site_url ) );
 		}
 	}
 
@@ -259,6 +265,8 @@ class Auth_Command extends EE_Command {
 		if ( empty( $user_ips ) || 'all' === $user_ips[0] ) {
 			$this->fs->remove( $file );
 		} else {
+			$removed_ips  = array_intersect( $existing_ips, $user_ips );
+			$leftover_ips = array_diff( $user_ips, $removed_ips );
 			$updated_ips  = array_diff( $existing_ips, $user_ips );
 			$file_content = '';
 			foreach ( $updated_ips as $individual_ip ) {
@@ -266,6 +274,11 @@ class Auth_Command extends EE_Command {
 			}
 			$this->fs->dumpFile( $file, $file_content );
 		}
+		if ( empty( $removed_ips ) ) {
+			EE::error( sprintf( '%s IP\'s not found in whitelist of `%s` scope', implode( ',', $user_ips ), $this->db->site_url ) );
+		}
+		EE::warning( sprintf( 'Could not find %s IP\'s from whitelist of `%s` scope', implode( ',', $leftover_ips ), $this->db->site_url ) );
+		EE::log( sprintf( 'Removed %s IP\'s from whitelist of `%s` scope', implode( ',', $removed_ips ), $this->db->site_url ) );
 	}
 
 
