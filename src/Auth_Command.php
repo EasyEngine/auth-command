@@ -34,7 +34,6 @@ class Auth_Command extends EE_Command {
 		$this->fs = new Filesystem();
 	}
 
-
 	/**
 	 * Creates/Updates http auth for a site.
 	 *
@@ -280,7 +279,6 @@ class Auth_Command extends EE_Command {
 		EE::warning( sprintf( 'Could not find %s IP\'s from whitelist of `%s` scope', implode( ',', $leftover_ips ), $this->db->site_url ) );
 		EE::log( sprintf( 'Removed %s IP\'s from whitelist of `%s` scope', implode( ',', $removed_ips ), $this->db->site_url ) );
 	}
-
 
 	/**
 	 * Function to reload the global reverse proxy to update the effect of changes done.
