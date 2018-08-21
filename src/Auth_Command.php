@@ -173,6 +173,7 @@ class Auth_Command extends EE_Command {
 	 */
 	public function whitelist( $args, $assoc_args ) {
 
+		// If new sub-commands for whitelisting is added, function for it and this varibale needs to be updated.
 		$commands = [ 'create', 'append', 'list', 'remove' ];
 		if ( ! ( isset( $args[0] ) && in_array( $args[0], $commands ) ) ) {
 			$help = PHP_EOL;
@@ -242,13 +243,13 @@ class Auth_Command extends EE_Command {
 	 */
 	private function whitelist_list( $file, $user_ips, $existing_ips ) {
 
-		if ( ! empty( $existing_ips ) ) {
-			EE::log( sprintf( 'Whitelisted IP\'s for `%s` scope', $this->db->site_url ) );
-			foreach ( $existing_ips as $ips ) {
-				EE::log( $ips );
-			}
-		} else {
-			EE::error( sprintf( 'No Whitelisted IP\'s found for `%s` scope', $this->db->site_url ) );
+		if ( empty( $existing_ips ) ) {
+			EE::error( sprintf( 'No Whitelisted IP\'s found for %s scope', $this->db->site_url ) );
+		}
+
+		EE::log( sprintf( 'Whitelisted IP\'s for %s scope', $this->db->site_url ) );
+		foreach ( $existing_ips as $ips ) {
+			EE::log( $ips );
 		}
 	}
 
@@ -310,6 +311,14 @@ class Auth_Command extends EE_Command {
 		return $existing_ips;
 	}
 
+	/**
+	 * Function to populate basic info from args
+	 *
+	 * @param array $args     args passed from function.
+	 * @param string $command command name that is calling the function.
+	 *
+	 * @return bool $global Whether the command is global or site-specific.
+	 */
 	private function populate_info( $args, $command ) {
 
 		$global = false;
