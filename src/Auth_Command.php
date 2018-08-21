@@ -173,7 +173,7 @@ class Auth_Command extends EE_Command {
 	 */
 	public function whitelist( $args, $assoc_args ) {
 
-		// If new sub-commands for whitelisting is added, function for it and this varibale needs to be updated.
+		// Note: If new sub-commands for whitelisting is added, function for it and this varibale needs to be updated.
 		$commands = [ 'create', 'append', 'list', 'remove' ];
 		if ( ! ( isset( $args[0] ) && in_array( $args[0], $commands ) ) ) {
 			$help = PHP_EOL;
