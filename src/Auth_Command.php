@@ -71,7 +71,7 @@ class Auth_Command extends EE_Command {
 		EE::log( 'Reloading global reverse proxy.' );
 		$this->reload();
 
-		EE::log( sprintf( 'Auth successfully updated for `%s` scope. New values added/updated:', $this->site_data->site_url ) );
+		EE::success( sprintf( 'Auth successfully updated for `%s` scope. New values added/updated:', $this->site_data->site_url ) );
 		EE::log( 'User:' . $user );
 		EE::log( 'Pass:' . $pass );
 	}
@@ -98,7 +98,7 @@ class Auth_Command extends EE_Command {
 			EE::exec( sprintf( 'docker exec %s htpasswd -D /etc/nginx/htpasswd/%s %s', EE_PROXY_TYPE, $this->site_data->site_url, $user ), true, true );
 		} else {
 			$this->fs->remove( EE_CONF_ROOT . '/nginx/htpasswd/' . $file );
-			EE::log( sprintf( 'http auth removed for `%s` scope', $this->site_data->site_url ) );
+			EE::success( sprintf( 'http auth removed for `%s` scope', $this->site_data->site_url ) );
 		}
 		$this->reload();
 	}
@@ -213,7 +213,7 @@ class Auth_Command extends EE_Command {
 			$file_content .= "allow $ip;" . PHP_EOL;
 		}
 		$this->fs->dumpFile( $file, $file_content );
-		EE::log( sprintf( 'Created whitelist for `%s` scope with %s IP\'s.', $this->site_data->site_url, implode( ',', $user_ips ) ) );
+		EE::success( sprintf( 'Created whitelist for `%s` scope with %s IP\'s.', $this->site_data->site_url, implode( ',', $user_ips ) ) );
 	}
 
 	/**
@@ -231,7 +231,7 @@ class Auth_Command extends EE_Command {
 			$file_content .= "allow $individual_ip;" . PHP_EOL;
 		}
 		$this->fs->dumpFile( $file, $file_content );
-		EE::log( sprintf( 'Appended %s IP\'s to whitelist of `%s` scope', implode( ',', $user_ips ), $this->site_data->site_url ) );
+		EE::success( sprintf( 'Appended %s IP\'s to whitelist of `%s` scope', implode( ',', $user_ips ), $this->site_data->site_url ) );
 	}
 
 	/**
@@ -278,7 +278,7 @@ class Auth_Command extends EE_Command {
 			EE::error( sprintf( '%s IP\'s not found in whitelist of `%s` scope', implode( ',', $user_ips ), $this->site_data->site_url ) );
 		}
 		EE::warning( sprintf( 'Could not find %s IP\'s from whitelist of `%s` scope', implode( ',', $leftover_ips ), $this->site_data->site_url ) );
-		EE::log( sprintf( 'Removed %s IP\'s from whitelist of `%s` scope', implode( ',', $removed_ips ), $this->site_data->site_url ) );
+		EE::success( sprintf( 'Removed %s IP\'s from whitelist of `%s` scope', implode( ',', $removed_ips ), $this->site_data->site_url ) );
 	}
 
 	/**
