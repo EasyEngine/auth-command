@@ -208,11 +208,7 @@ class Auth_Command extends EE_Command {
 	 */
 	private function whitelist_create( $file, $user_ips, $existing_ips ) {
 
-		$file_content = '';
-		foreach ( $user_ips as $ip ) {
-			$file_content .= "allow $ip;" . PHP_EOL;
-		}
-		$this->fs->dumpFile( $file, $file_content );
+		$this->put_ips_to_file( $file, $user_ips );
 		EE::success( sprintf( 'Created whitelist for `%s` scope with %s IP\'s.', $this->site_data->site_url, implode( ',', $user_ips ) ) );
 	}
 
@@ -225,12 +221,8 @@ class Auth_Command extends EE_Command {
 	 */
 	private function whitelist_append( $file, $user_ips, $existing_ips ) {
 
-		$all_ips      = array_unique( array_merge( $user_ips, $existing_ips ) );
-		$file_content = '';
-		foreach ( $all_ips as $individual_ip ) {
-			$file_content .= "allow $individual_ip;" . PHP_EOL;
-		}
-		$this->fs->dumpFile( $file, $file_content );
+		$all_ips = array_unique( array_merge( $user_ips, $existing_ips ) );
+		$this->put_ips_to_file( $file, $all_ips );
 		EE::success( sprintf( 'Appended %s IP\'s to whitelist of `%s` scope', implode( ',', $user_ips ), $this->site_data->site_url ) );
 	}
 
@@ -302,13 +294,29 @@ class Auth_Command extends EE_Command {
 		$file         .= $global ? 'default_acl' : $this->site_data->site_url . '_acl';
 		$existing_ips = [];
 		if ( $this->fs->exists( $file ) ) {
-			$existing_ips_in_file = array_filter( explode( PHP_EOL, trim( file_get_contents( $file ) ) ), 'strlen' );
+			$existing_ips_in_file = array_slice( array_filter( explode( PHP_EOL, file_get_contents( $file ) ), 'trim' ), 1, - 1 );
 			foreach ( $existing_ips_in_file as $ip_in_file ) {
 				$existing_ips[] = str_replace( [ 'allow ', ';' ], '', trim( $ip_in_file ) );
 			}
 		}
 
 		return $existing_ips;
+	}
+
+	/**
+	 * Function to put list of ip's into a file.
+	 *
+	 * @param string $file Path of file to write ip's in.
+	 * @param array $ips   List of ip's.
+	 */
+	private function put_ips_to_file( $file, $ips ) {
+
+		$file_content = 'satisfy any;' . PHP_EOL;
+		foreach ( $ips as $ip ) {
+			$file_content .= "allow $ip;" . PHP_EOL;
+		}
+		$file_content .= 'deny all;';
+		$this->fs->dumpFile( $file, $file_content );
 	}
 
 	/**
