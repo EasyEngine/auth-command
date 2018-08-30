@@ -16,6 +16,7 @@
 
 use EE\Model\Site;
 use \Symfony\Component\Filesystem\Filesystem;
+use function EE\Site\Utils\auto_site_name;
 
 class Auth_Command extends EE_Command {
 
@@ -46,11 +47,29 @@ class Auth_Command extends EE_Command {
 	 * : Username for http auth.
 	 *
 	 * [--pass=<pass>]
-	 * : Password for http auth
+	 * : Password for http auth.
+	 *
+	 * [--site]
+	 * : Add auth on site.
+	 *
+	 * [--admin-tools]
+	 * : Add auth on admin-tools.
+	 *
+	 * [--all]
+	 * : Add auth on both site and admin-tools.
 	 *
 	 * @alias update
 	 */
 	public function create( $args, $assoc_args ) {
+
+		$scope_all         = $assoc_args['all'] ?? false;
+		$scope_site        = ( $assoc_args['site'] ?? false ) || $scope_all;
+		$scope_admin_tools = ( $assoc_args['admin-tools'] ?? false ) || $scope_all;
+
+		if ( ! $scope_site && ! $scope_admin_tools ) {
+			$scope_site        = true;
+			$scope_admin_tools = true;
+		}
 
 		$global = $this->populate_info( $args, __FUNCTION__ );
 
@@ -61,12 +80,23 @@ class Auth_Command extends EE_Command {
 
 		EE::debug( 'Verifying htpasswd is present.' );
 		$check_htpasswd_present = EE::exec( sprintf( 'docker exec %s sh -c \'command -v htpasswd\'', EE_PROXY_TYPE ) );
+
 		if ( ! $check_htpasswd_present ) {
 			EE::error( sprintf( 'Could not find apache2-utils installed in %s.', EE_PROXY_TYPE ) );
 		}
-		$file   = $global ? 'default' : $this->site_data->site_url;
-		$params = $this->fs->exists( EE_CONF_ROOT . '/nginx/htpasswd/' . $file ) ? 'b' : 'bc';
-		EE::exec( sprintf( 'docker exec %s htpasswd -%s /etc/nginx/htpasswd/%s %s %s', EE_PROXY_TYPE, $params, $file, $user, $pass ) );
+
+		if ( $scope_site ) {
+			$file   = $global ? 'default' : $this->site_data->site_url;
+			$params = $this->fs->exists( EE_CONF_ROOT . '/nginx/htpasswd/' . $file ) ? 'b' : 'bc';
+			EE::exec( sprintf( 'docker exec %s htpasswd -%s /etc/nginx/htpasswd/%s %s %s', EE_PROXY_TYPE, $params, $file, $user, $pass ) );
+		}
+
+		if ( $scope_admin_tools ) {
+			$site_name = $global ? 'default' : $this->site_data->site_url;
+			$file      = $site_name . '_admin_tools';
+			$params    = $this->fs->exists( EE_CONF_ROOT . '/nginx/htpasswd/' . $file ) ? 'b' : 'bc';
+			EE::exec( sprintf( 'docker exec %s htpasswd -%s /etc/nginx/htpasswd/%s %s %s', EE_PROXY_TYPE, $params, $file, $user, $pass ) );
+		}
 
 		EE::log( 'Reloading global reverse proxy.' );
 		$this->reload();
@@ -334,7 +364,7 @@ class Auth_Command extends EE_Command {
 			$this->site_data = (object) [ 'site_url' => $args[0] ];
 			$global          = true;
 		} else {
-			$args            = EE\SiteUtils\auto_site_name( $args, 'auth', $command );
+			$args            = auto_site_name( $args, 'auth', $command );
 			$this->site_data = Site::find( EE\Utils\remove_trailing_slash( $args[0] ) );
 			if ( ! $this->site_data || ! $this->site_data->site_enabled ) {
 				EE::error( sprintf( 'Site %s does not exist / is not enabled.', $args[0] ) );
