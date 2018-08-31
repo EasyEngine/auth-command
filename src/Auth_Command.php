@@ -37,7 +37,71 @@ class Auth_Command extends EE_Command {
 	}
 
 	/**
-	 * Creates/Updates http auth for a site.
+	 * Creates http auth for a site.
+	 *
+	 * ## OPTIONS
+	 *
+	 * [<site-name>]
+	 * : Name of website to be secured.
+	 *
+	 * [--user=<user>]
+	 * : Username for http auth.
+	 *
+	 * [--pass=<pass>]
+	 * : Password for http auth.
+	 */
+	public function create( $args, $assoc_args ) {
+
+		$global = $this->populate_info( $args, __FUNCTION__ );
+
+		EE::debug( sprintf( 'ee auth start, Site: %s', $this->site_data->site_url ) );
+
+		$user = EE\Utils\get_flag_value( $assoc_args, 'user', 'easyengine' );
+		$pass = EE\Utils\get_flag_value( $assoc_args, 'pass', EE\Utils\random_password() );
+
+		EE::debug( 'Verifying htpasswd is present.' );
+		$check_htpasswd_present = EE::exec( sprintf( 'docker exec %s sh -c \'command -v htpasswd\'', EE_PROXY_TYPE ) );
+
+		if ( ! $check_htpasswd_present ) {
+			EE::error( sprintf( 'Could not find apache2-utils installed in %s.', EE_PROXY_TYPE ) );
+		}
+
+		$site_url = $global ? 'default' : $this->site_data->site_url;
+
+		if ( ! empty( Auth::where( [
+			'site_url' => $site_url,
+			'username' => $user,
+		] ) ) ) {
+
+			EE::error( "Auth with username $user already exists on $site_url" );
+		}
+
+		$site_auth_file_name = $site_url . '_admin_tools';
+		$auth_data = [
+			'site_url' => $site_url,
+			'username' => $user,
+			'password' => $pass,
+			'scope'    => 'site',
+		];
+
+		Auth::create( $auth_data );
+		EE::exec( sprintf( 'docker exec %s htpasswd -bc /etc/nginx/htpasswd/%s %s %s', EE_PROXY_TYPE, $site_url, $user, $pass ) );
+
+		$auth_data['scope'] = 'admin-tools';
+
+		Auth::create( $auth_data );
+		EE::exec( sprintf( 'docker exec %s htpasswd -bc /etc/nginx/htpasswd/%s %s %s', EE_PROXY_TYPE, $site_auth_file_name, $user, $pass ) );
+
+		EE::log( 'Reloading global reverse proxy.' );
+		$this->reload();
+
+		EE::success( sprintf( 'Auth successfully updated for `%s` scope. New values added/updated:', $this->site_data->site_url ) );
+		EE::log( 'User:' . $user );
+		EE::log( 'Pass:' . $pass );
+	}
+
+	/**
+	 * Updates http auth for a site.
 	 *
 	 * ## OPTIONS
 	 *
@@ -58,14 +122,12 @@ class Auth_Command extends EE_Command {
 	 *
 	 * [--all]
 	 * : Add auth on both site and admin-tools.
-	 *
-	 * @alias update
 	 */
-	public function create( $args, $assoc_args ) {
+	public function update( $args, $assoc_args ) {
 
 		$scope_all         = $assoc_args['all'] ?? false;
-		$scope_site        = ( $assoc_args['site'] ?? false ) || $scope_all;
-		$scope_admin_tools = ( $assoc_args['admin-tools'] ?? false ) || $scope_all;
+		$scope_site        = $assoc_args['site'] ?? false;
+		$scope_admin_tools = $assoc_args['admin-tools'] ?? false;
 
 		if ( ! $scope_site && ! $scope_admin_tools ) {
 			$scope_site        = true;
@@ -86,25 +148,43 @@ class Auth_Command extends EE_Command {
 			EE::error( sprintf( 'Could not find apache2-utils installed in %s.', EE_PROXY_TYPE ) );
 		}
 
-		if ( $scope_site ) {
-			$site_url = $global ? 'default' : $this->site_data->site_url;
-			$params   = $this->fs->exists( EE_CONF_ROOT . '/nginx/htpasswd/' . $site_url ) ? 'b' : 'bc';
+		$site_url = $global ? 'default' : $this->site_data->site_url;
 
-			EE::exec( sprintf( 'docker exec %s htpasswd -%s /etc/nginx/htpasswd/%s %s %s', EE_PROXY_TYPE, $params, $site_url, $user, $pass ) );
+		if ( empty( Auth::where( [
+			'site_url' => $site_url,
+			'username' => $user,
+		] ) ) ) {
 
-			$site_url = $global ? 'global' : $site_url;
-			Auth::create_or_update( $site_url, $user, $pass, 'site' );
+			EE::error( "Auth with username $user does not exists on $site_url" );
 		}
 
-		if ( $scope_admin_tools ) {
-			$site_url            = $global ? 'default' : $this->site_data->site_url;
+		if ( $scope_site || $scope_all ) {
+			$auth = Auth::where( [
+				'site_url' => $site_url,
+				'username' => $user,
+				'scope'    => 'site',
+			] )[0];
+
+			$auth->update( [
+				'password' => $pass,
+			] );
+
+			EE::exec( sprintf( 'docker exec %s htpasswd -b /etc/nginx/htpasswd/%s %s %s', EE_PROXY_TYPE, $site_url, $user, $pass ) );
+		}
+
+		if ( $scope_admin_tools || $scope_all ) {
+			$auth = Auth::where( [
+				'site_url' => $site_url,
+				'username' => $user,
+				'scope' => 'admin-tools',
+			] )[0];
+
+			$auth->update( [
+				'password' => $pass,
+			] );
+
 			$site_auth_file_name = $site_url . '_admin_tools';
-			$params              = $this->fs->exists( EE_CONF_ROOT . '/nginx/htpasswd/' . $site_auth_file_name ) ? 'b' : 'bc';
-
-			EE::exec( sprintf( 'docker exec %s htpasswd -%s /etc/nginx/htpasswd/%s %s %s', EE_PROXY_TYPE, $params, $site_auth_file_name, $user, $pass ) );
-
-			$site_url = $global ? 'global' : $site_url;
-			Auth::create_or_update( $site_url, $user, $pass, 'admin-tools' );
+			EE::exec( sprintf( 'docker exec %s htpasswd -b /etc/nginx/htpasswd/%s %s %s', EE_PROXY_TYPE, $site_auth_file_name, $user, $pass ) );
 		}
 
 		EE::log( 'Reloading global reverse proxy.' );
