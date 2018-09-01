@@ -18,6 +18,7 @@ use EE\Model\Auth;
 use EE\Model\Site;
 use Symfony\Component\Filesystem\Filesystem;
 use function EE\Site\Utils\auto_site_name;
+use function EE\Site\Utils\get_site_info;
 
 class Auth_Command extends EE_Command {
 
@@ -77,7 +78,7 @@ class Auth_Command extends EE_Command {
 		}
 
 		$site_auth_file_name = $site_url . '_admin_tools';
-		$auth_data = [
+		$auth_data           = [
 			'site_url' => $site_url,
 			'username' => $user,
 			'password' => $pass,
@@ -176,7 +177,7 @@ class Auth_Command extends EE_Command {
 			$auth = Auth::where( [
 				'site_url' => $site_url,
 				'username' => $user,
-				'scope' => 'admin-tools',
+				'scope'    => 'admin-tools',
 			] )[0];
 
 			$auth->update( [
@@ -454,10 +455,7 @@ class Auth_Command extends EE_Command {
 			$global          = true;
 		} else {
 			$args            = auto_site_name( $args, 'auth', $command );
-			$this->site_data = Site::find( EE\Utils\remove_trailing_slash( $args[0] ) );
-			if ( ! $this->site_data || ! $this->site_data->site_enabled ) {
-				EE::error( sprintf( 'Site %s does not exist / is not enabled.', $args[0] ) );
-			}
+			$this->site_data = get_site_info( $args );
 		}
 
 		return $global;
