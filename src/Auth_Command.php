@@ -19,6 +19,7 @@ use EE\Model\Site;
 use Symfony\Component\Filesystem\Filesystem;
 use function EE\Site\Utils\auto_site_name;
 use function EE\Site\Utils\get_site_info;
+use function EE\Site\Utils\reload_global_nginx_proxy;
 
 class Auth_Command extends EE_Command {
 
@@ -53,19 +54,13 @@ class Auth_Command extends EE_Command {
 	 */
 	public function create( $args, $assoc_args ) {
 
+		$this->verify_htpasswd_is_present();
 		$global = $this->populate_info( $args, __FUNCTION__ );
 
 		EE::debug( sprintf( 'ee auth start, Site: %s', $this->site_data->site_url ) );
 
 		$user = EE\Utils\get_flag_value( $assoc_args, 'user', 'easyengine' );
 		$pass = EE\Utils\get_flag_value( $assoc_args, 'pass', EE\Utils\random_password() );
-
-		EE::debug( 'Verifying htpasswd is present.' );
-		$check_htpasswd_present = EE::exec( sprintf( 'docker exec %s sh -c \'command -v htpasswd\'', EE_PROXY_TYPE ) );
-
-		if ( ! $check_htpasswd_present ) {
-			EE::error( sprintf( 'Could not find apache2-utils installed in %s.', EE_PROXY_TYPE ) );
-		}
 
 		$site_url = $global ? 'default' : $this->site_data->site_url;
 
@@ -94,7 +89,7 @@ class Auth_Command extends EE_Command {
 		EE::exec( sprintf( 'docker exec %s htpasswd -bc /etc/nginx/htpasswd/%s %s %s', EE_PROXY_TYPE, $site_auth_file_name, $user, $pass ) );
 
 		EE::log( 'Reloading global reverse proxy.' );
-		$this->reload();
+		reload_global_nginx_proxy();
 
 		EE::success( sprintf( 'Auth successfully updated for `%s` scope. New values added/updated:', $this->site_data->site_url ) );
 		EE::log( 'User:' . $user );
@@ -126,6 +121,7 @@ class Auth_Command extends EE_Command {
 	 */
 	public function update( $args, $assoc_args ) {
 
+		$this->verify_htpasswd_is_present();
 		$scope_all         = $assoc_args['all'] ?? false;
 		$scope_site        = $assoc_args['site'] ?? false;
 		$scope_admin_tools = $assoc_args['admin-tools'] ?? false;
@@ -141,13 +137,6 @@ class Auth_Command extends EE_Command {
 
 		$user = EE\Utils\get_flag_value( $assoc_args, 'user', 'easyengine' );
 		$pass = EE\Utils\get_flag_value( $assoc_args, 'pass', EE\Utils\random_password() );
-
-		EE::debug( 'Verifying htpasswd is present.' );
-		$check_htpasswd_present = EE::exec( sprintf( 'docker exec %s sh -c \'command -v htpasswd\'', EE_PROXY_TYPE ) );
-
-		if ( ! $check_htpasswd_present ) {
-			EE::error( sprintf( 'Could not find apache2-utils installed in %s.', EE_PROXY_TYPE ) );
-		}
 
 		$site_url = $global ? 'default' : $this->site_data->site_url;
 
@@ -189,7 +178,7 @@ class Auth_Command extends EE_Command {
 		}
 
 		EE::log( 'Reloading global reverse proxy.' );
-		$this->reload();
+		reload_global_nginx_proxy();
 
 		EE::success( sprintf( 'Auth successfully updated for `%s` scope. New values added/updated:', $this->site_data->site_url ) );
 		EE::log( 'User:' . $user );
@@ -210,6 +199,7 @@ class Auth_Command extends EE_Command {
 	 */
 	public function delete( $args, $assoc_args ) {
 
+		$this->verify_htpasswd_is_present();
 		$global = $this->populate_info( $args, __FUNCTION__ );
 		$file   = $global ? 'default' : $this->site_data->site_url;
 		$user   = EE\Utils\get_flag_value( $assoc_args, 'user' );
@@ -220,7 +210,7 @@ class Auth_Command extends EE_Command {
 			$this->fs->remove( EE_CONF_ROOT . '/nginx/htpasswd/' . $file );
 			EE::success( sprintf( 'http auth removed for `%s` scope', $this->site_data->site_url ) );
 		}
-		$this->reload();
+		reload_global_nginx_proxy();
 	}
 
 	/**
@@ -316,7 +306,7 @@ class Auth_Command extends EE_Command {
 
 		call_user_func_array( [ $this, "whitelist_$command" ], [ $file, $user_ips, $existing_ips ] );
 
-		$this->reload();
+		reload_global_nginx_proxy();
 	}
 
 	/**
@@ -394,14 +384,6 @@ class Auth_Command extends EE_Command {
 	}
 
 	/**
-	 * Function to reload the global reverse proxy to update the effect of changes done.
-	 */
-	private function reload() {
-
-		EE::exec( sprintf( 'docker exec %s sh -c "/app/docker-entrypoint.sh /usr/local/bin/docker-gen /app/nginx.tmpl /etc/nginx/conf.d/default.conf; /usr/sbin/nginx -s reload"', EE_PROXY_TYPE ) );
-	}
-
-	/**
 	 * Function to get the list of ip's from given file.
 	 *
 	 * @param boolean $global Is the scope global or site specific.
@@ -455,10 +437,22 @@ class Auth_Command extends EE_Command {
 			$global          = true;
 		} else {
 			$args            = auto_site_name( $args, 'auth', $command );
-			$this->site_data = get_site_info( $args );
+			$this->site_data = get_site_info( $args, true, true, false );
 		}
 
 		return $global;
+	}
+
+	/**
+	 * Check if htpasswd is present in the global-container.
+	 */
+	private function verify_htpasswd_is_present() {
+
+		EE::debug( 'Verifying htpasswd is present.' );
+		if ( EE::exec( sprintf( 'docker exec %s sh -c \'command -v htpasswd\'', EE_PROXY_TYPE ) ) ) {
+			return;
+		}
+		EE::error( sprintf( 'Could not find apache2-utils installed in %s.', EE_PROXY_TYPE ) );
 	}
 
 }
