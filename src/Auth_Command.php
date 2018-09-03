@@ -39,6 +39,37 @@ class Auth_Command extends EE_Command {
 	}
 
 	/**
+	 * Creates global auth for admin tools .
+	 */
+	public function init() {
+
+		$this->verify_htpasswd_is_present();
+		$auth_data = [
+			'site_url' => 'default',
+			'username' => 'easyengine',
+			'scope'    => 'admin-tools',
+		];
+
+		if ( ! empty( Auth::where( $auth_data ) ) ) {
+			EE::log( 'Global auth exists on admin-tools' );
+
+			return;
+		}
+
+		$site_auth_file_name = $auth_data['site_url'] . '_admin_tools';
+		$pass                = EE\Utils\random_password();
+
+		$auth_data['password'] = $pass;
+
+		Auth::create( $auth_data );
+		EE::exec( sprintf( 'docker exec %s htpasswd -bc /etc/nginx/htpasswd/%s %s %s', EE_PROXY_TYPE, $site_auth_file_name, $auth_data['username'], $auth_data['password'] ) );
+		EE::success( sprintf( 'Global admin-tools auth added.' ) );
+
+		EE::log( 'User: ' . $auth_data['username'] );
+		EE::log( 'Pass: ' . $auth_data['password'] );
+	}
+
+	/**
 	 * Creates http auth for a site.
 	 *
 	 * ## OPTIONS
@@ -92,8 +123,8 @@ class Auth_Command extends EE_Command {
 		reload_global_nginx_proxy();
 
 		EE::success( sprintf( 'Auth successfully updated for `%s` scope. New values added/updated:', $this->site_data->site_url ) );
-		EE::log( 'User:' . $user );
-		EE::log( 'Pass:' . $pass );
+		EE::log( 'User: ' . $user );
+		EE::log( 'Pass: ' . $pass );
 	}
 
 	/**
@@ -145,8 +176,8 @@ class Auth_Command extends EE_Command {
 		reload_global_nginx_proxy();
 
 		EE::success( sprintf( 'Auth successfully updated for `%s` scope. New values added/updated:', $this->site_data->site_url ) );
-		EE::log( 'User:' . $user );
-		EE::log( 'Pass:' . $pass );
+		EE::log( 'User: ' . $user );
+		EE::log( 'Pass: ' . $pass );
 	}
 
 	/**
