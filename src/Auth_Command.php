@@ -122,15 +122,7 @@ class Auth_Command extends EE_Command {
 	public function update( $args, $assoc_args ) {
 
 		$this->verify_htpasswd_is_present();
-		$scope_all         = $assoc_args['all'] ?? false;
-		$scope_site        = $assoc_args['site'] ?? false;
-		$scope_admin_tools = $assoc_args['admin-tools'] ?? false;
-
-		if ( ! $scope_site && ! $scope_admin_tools ) {
-			$scope_site        = true;
-			$scope_admin_tools = true;
-		}
-
+		$scope  = $this->get_scope( $assoc_args );
 		$global = $this->populate_info( $args, __FUNCTION__ );
 
 		EE::debug( sprintf( 'ee auth start, Site: %s', $this->site_data->site_url ) );
@@ -139,41 +131,13 @@ class Auth_Command extends EE_Command {
 		$pass = EE\Utils\get_flag_value( $assoc_args, 'pass', EE\Utils\random_password() );
 
 		$site_url = $global ? 'default' : $this->site_data->site_url;
+		$auths    = $this->get_auths( $site_url, $scope, $user );
 
-		if ( empty( Auth::where( [
-			'site_url' => $site_url,
-			'username' => $user,
-		] ) ) ) {
-
-			EE::error( "Auth with username $user does not exists on $site_url" );
-		}
-
-		if ( $scope_site || $scope_all ) {
-			$auth = Auth::where( [
-				'site_url' => $site_url,
-				'username' => $user,
-				'scope'    => 'site',
-			] )[0];
-
+		foreach ( $auths as $auth ) {
 			$auth->update( [
 				'password' => $pass,
 			] );
-
-			EE::exec( sprintf( 'docker exec %s htpasswd -b /etc/nginx/htpasswd/%s %s %s', EE_PROXY_TYPE, $site_url, $user, $pass ) );
-		}
-
-		if ( $scope_admin_tools || $scope_all ) {
-			$auth = Auth::where( [
-				'site_url' => $site_url,
-				'username' => $user,
-				'scope'    => 'admin-tools',
-			] )[0];
-
-			$auth->update( [
-				'password' => $pass,
-			] );
-
-			$site_auth_file_name = $site_url . '_admin_tools';
+			$site_auth_file_name = ( 'admin-tools' === $auth->scope ) ? $site_url . '_admin_tools' : $site_url;
 			EE::exec( sprintf( 'docker exec %s htpasswd -b /etc/nginx/htpasswd/%s %s %s', EE_PROXY_TYPE, $site_auth_file_name, $user, $pass ) );
 		}
 
@@ -453,6 +417,60 @@ class Auth_Command extends EE_Command {
 			return;
 		}
 		EE::error( sprintf( 'Could not find apache2-utils installed in %s.', EE_PROXY_TYPE ) );
+	}
+
+	/**
+	 * Get the appropriate scope from passed associative arguments.
+	 *
+	 * @param array $assoc_args Passed associative arguments.
+	 *
+	 * @return string Found scope.
+	 */
+	private function get_scope( $assoc_args ) {
+
+		$scope_site        = $assoc_args['site'] ?? false;
+		$scope_admin_tools = $assoc_args['admin-tools'] ?? false;
+
+		if ( $scope_site && ! $scope_admin_tools ) {
+			return 'site';
+		}
+
+		if ( $scope_admin_tools && ! $scope_site ) {
+			return 'admin-tools';
+		}
+
+		return 'all';
+	}
+
+	/**
+	 * Gets all the authentication objects from db.
+	 *
+	 * @param string $site_url Site URL.
+	 * @param string $scope    The scope of auth.
+	 * @param string $user     User for which the auth need to be fetched.
+	 *
+	 * @return array Array of auth models.
+	 */
+	private function get_auths( $site_url, $scope, $user ) {
+
+		$where_conditions = [
+			'site_url' => $site_url,
+			'username' => $user,
+		];
+
+		if ( 'all' !== $scope ) {
+			$where_conditions['scope'] = $scope;
+		}
+
+		$auths = Auth::where( $where_conditions );
+
+
+		if ( empty( $auths ) ) {
+			EE::error( "Auth with username $user does not exists on $site_url for scope $scope-wide" );
+		}
+
+		return $auths;
+
 	}
 
 }
