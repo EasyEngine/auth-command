@@ -50,6 +50,7 @@ class Auth_Command extends EE_Command {
 		];
 
 		if ( ! empty( Auth::where( $auth_data ) ) ) {
+			EE::log( 'Global auth exists on admin-tools. Use `ee auth list global` to view credentials.' );
 			return;
 		}
 
@@ -61,10 +62,7 @@ class Auth_Command extends EE_Command {
 
 		Auth::create( $auth_data );
 		EE::exec( sprintf( 'docker exec %s htpasswd -bc /etc/nginx/htpasswd/%s %s %s', EE_PROXY_TYPE, $site_auth_file_name, $auth_data['username'], $auth_data['password'] ) );
-		EE::success( sprintf( 'Global admin-tools auth added.' ) );
-
-		EE::log( 'User: ' . $auth_data['username'] );
-		EE::log( 'Pass: ' . $auth_data['password'] );
+		EE::success( sprintf( 'Global admin-tools auth added. Use `ee auth list global` to view credentials.' ) );
 	}
 
 	/**
