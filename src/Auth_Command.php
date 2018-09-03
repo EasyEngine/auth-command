@@ -199,6 +199,15 @@ class Auth_Command extends EE_Command {
 	 * [<site-name>]
 	 * : Name of website.
 	 *
+	 * [--all]
+	 * : List auth on both site and admin-tools.
+	 *
+	 * [--site]
+	 * : List auth on site.
+	 *
+	 * [--admin-tools]
+	 * : List auth for admin-tools.
+	 *
 	 * [--format=<format>]
 	 * : Render output in a particular format.
 	 * ---
@@ -209,31 +218,25 @@ class Auth_Command extends EE_Command {
 	 *   - yaml
 	 *   - json
 	 *   - count
-	 *   - text
 	 * ---
 	 */
 	public function list( $args, $assoc_args ) {
 
-		$global = $this->populate_info( $args, __FUNCTION__ );
-		$file   = EE_CONF_ROOT . '/nginx/htpasswd/' . ( $global ? 'default' : $this->site_data->site_url );
-		$format = EE\Utils\get_flag_value( $assoc_args, 'format' );
-		if ( $this->fs->exists( $file ) ) {
-			$user_lines = explode( PHP_EOL, trim( file_get_contents( $file ) ) );
-			foreach ( $user_lines as $line ) {
-				$users[]['users'] = strstr( $line, ':', true );
-			}
+		$global   = $this->populate_info( $args, __FUNCTION__ );
+		$scope    = $this->get_scope( $assoc_args );
+		$site_url = $global ? 'default' : $this->site_data->site_url;
+		$auths    = $this->get_auths( $site_url, $scope, false );
 
-			if ( 'text' === $format ) {
-				foreach ( $users as $user ) {
-					EE::log( $user['users'] );
-				}
-			} else {
-				$formatter = new EE\Formatter( $assoc_args, [ 'users' ] );
-				$formatter->display_items( $users );
-			}
-		} else {
-			EE::error( sprintf( 'http auth not enabled on %s', $this->site_data->site_url ) );
+		foreach ( $auths as $auth ) {
+			$users[] = [
+				'username' => $auth->username,
+				'password' => $auth->password,
+				'scope'    => $auth->scope,
+			];
 		}
+
+		$formatter = new EE\Formatter( $assoc_args, [ 'username', 'password', 'scope' ] );
+		$formatter->display_items( $users );
 	}
 
 	/**
@@ -480,7 +483,6 @@ class Auth_Command extends EE_Command {
 		}
 
 		$auths = Auth::where( $where_conditions );
-
 
 		if ( empty( $auths ) ) {
 			$all_error_msg  = ( 'all' === $scope ) ? '' : 'for ' . $scope;
