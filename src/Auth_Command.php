@@ -79,42 +79,53 @@ class Auth_Command extends EE_Command {
 	 *
 	 * [--pass=<pass>]
 	 * : Password for http auth.
+	 *
+	 * [--site]
+	 * : Update auth on site.
+	 *
+	 * [--admin-tools]
+	 * : Update auth on admin-tools.
+	 *
+	 * [--all]
+	 * : Update auth on both site and admin-tools. Default option if no parameter passed.
 	 */
 	public function create( $args, $assoc_args ) {
 
 		$this->verify_htpasswd_is_present();
 		$global = $this->populate_info( $args, __FUNCTION__ );
-
-		EE::debug( sprintf( 'ee auth start, Site: %s', $this->site_data->site_url ) );
+		$scope  = $this->get_scope( $assoc_args );
 
 		$user = EE\Utils\get_flag_value( $assoc_args, 'user', 'easyengine' );
 		$pass = EE\Utils\get_flag_value( $assoc_args, 'pass', EE\Utils\random_password() );
 
 		$site_url = $global ? 'default' : $this->site_data->site_url;
 
-		if ( ! empty( Auth::where( [
-			'site_url' => $site_url,
-			'username' => $user,
-		] ) ) ) {
-
-			EE::error( "Auth with username $user already exists on $site_url" );
+		if ( ! empty( $this->get_auths( $site_url, $scope, $user, false ) ) ) {
+			$site_url = ( 'default' === $site_url ) ? 'global' : $site_url;
+			EE::error( "Auth with username $user already exists on $site_url for --$scope." );
 		}
 
-		$site_auth_file_name = $site_url . '_admin_tools';
-		$auth_data           = [
+		$auth_data = [
 			'site_url' => $site_url,
 			'username' => $user,
 			'password' => $pass,
 			'scope'    => 'site',
 		];
 
-		Auth::create( $auth_data );
-		EE::exec( sprintf( 'docker exec %s htpasswd -bc /etc/nginx/htpasswd/%s %s %s', EE_PROXY_TYPE, $site_url, $user, $pass ) );
+		if ( 'site' === $scope || 'all' === $scope ) {
+			$site_auth_file_name = $site_url;
+			Auth::create( $auth_data );
+			$params = $this->fs->exists( EE_CONF_ROOT . '/nginx/htpasswd/' . $site_auth_file_name ) ? 'b' : 'bc';
+			EE::exec( sprintf( 'docker exec %s htpasswd -%s /etc/nginx/htpasswd/%s %s %s', EE_PROXY_TYPE, $params, $site_auth_file_name, $user, $pass ) );
+		}
 
-		$auth_data['scope'] = 'admin-tools';
-
-		Auth::create( $auth_data );
-		EE::exec( sprintf( 'docker exec %s htpasswd -bc /etc/nginx/htpasswd/%s %s %s', EE_PROXY_TYPE, $site_auth_file_name, $user, $pass ) );
+		if ( 'admin-tools' === $scope || 'all' === $scope ) {
+			$site_auth_file_name = $site_url . '_admin_tools';
+			$auth_data['scope']  = 'admin-tools';
+			Auth::create( $auth_data );
+			$params = $this->fs->exists( EE_CONF_ROOT . '/nginx/htpasswd/' . $site_auth_file_name ) ? 'b' : 'bc';
+			EE::exec( sprintf( 'docker exec %s htpasswd -%s /etc/nginx/htpasswd/%s %s %s', EE_PROXY_TYPE, $params, $site_auth_file_name, $user, $pass ) );
+		}
 
 		EE::log( 'Reloading global reverse proxy.' );
 		reload_global_nginx_proxy();
@@ -499,7 +510,7 @@ class Auth_Command extends EE_Command {
 	 *
 	 * @return array Array of auth models.
 	 */
-	private function get_auths( $site_url, $scope, $user ) {
+	private function get_auths( $site_url, $scope, $user, $error_if_empty = true ) {
 
 		$where_conditions = [ 'site_url' => $site_url ];
 
@@ -515,7 +526,7 @@ class Auth_Command extends EE_Command {
 
 		$auths = Auth::where( $where_conditions );
 
-		if ( empty( $auths ) ) {
+		if ( empty( $auths ) && $error_if_empty ) {
 			$all_error_msg  = ( 'all' === $scope ) ? '' : 'for ' . $scope;
 			$site_error_msg = ( 'default' === $site_url ) ? 'global' : $site_url;
 			EE::error( sprintf( 'Auth%s does not exists on %s %s', $user_error_msg, $site_error_msg, $all_error_msg ) );
