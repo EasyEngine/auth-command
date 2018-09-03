@@ -142,21 +142,19 @@ class Auth_Command extends EE_Command {
 	 * : Password for http auth.
 	 *
 	 * [--site]
-	 * : Add auth on site.
+	 * : Update auth on site.
 	 *
 	 * [--admin-tools]
-	 * : Add auth on admin-tools.
+	 * : Update auth on admin-tools.
 	 *
 	 * [--all]
-	 * : Add auth on both site and admin-tools.
+	 * : Update auth on both site and admin-tools.
 	 */
 	public function update( $args, $assoc_args ) {
 
 		$this->verify_htpasswd_is_present();
 		$scope  = $this->get_scope( $assoc_args );
 		$global = $this->populate_info( $args, __FUNCTION__ );
-
-		EE::debug( sprintf( 'ee auth start, Site: %s', $this->site_data->site_url ) );
 
 		$user = EE\Utils\get_flag_value( $assoc_args, 'user', 'easyengine' );
 		$pass = EE\Utils\get_flag_value( $assoc_args, 'pass', EE\Utils\random_password() );
@@ -211,12 +209,13 @@ class Auth_Command extends EE_Command {
 		$auths    = $this->get_auths( $site_url, $scope, $user );
 
 		foreach ( $auths as $auth ) {
+			$username   = $auth->username;
+			$User_scope = $auth->scope;
 			$auth->delete();
 			$site_auth_file_name = ( 'admin-tools' === $auth->scope ) ? $site_url . '_admin_tools' : $site_url;
 			EE::exec( sprintf( 'docker exec %s htpasswd -D /etc/nginx/htpasswd/%s %s', EE_PROXY_TYPE, $site_auth_file_name, $auth->username ) );
+			EE::success( sprintf( 'http auth successfully removed of user: %s for %s.', $username, $User_scope ) );
 		}
-
-		EE::success( 'http auth successfully removed.' );
 
 		EE::log( 'Reloading global reverse proxy.' );
 		reload_global_nginx_proxy();
@@ -506,7 +505,7 @@ class Auth_Command extends EE_Command {
 		$user_error_msg = '';
 		if ( $user ) {
 			$where_conditions['username'] = $user;
-			$user_error_msg               = ' with username' . $user;
+			$user_error_msg               = ' with username: ' . $user;
 		}
 
 		if ( 'all' !== $scope ) {
