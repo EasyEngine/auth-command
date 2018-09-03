@@ -51,6 +51,7 @@ class Auth_Command extends EE_Command {
 
 		if ( ! empty( Auth::where( $auth_data ) ) ) {
 			EE::log( 'Global auth exists on admin-tools. Use `ee auth list global` to view credentials.' );
+
 			return;
 		}
 
@@ -210,6 +211,10 @@ class Auth_Command extends EE_Command {
 			$auth->delete();
 			$site_auth_file_name = ( 'admin-tools' === $auth->scope ) ? $site_url . '_admin_tools' : $site_url;
 			EE::exec( sprintf( 'docker exec %s htpasswd -D /etc/nginx/htpasswd/%s %s', EE_PROXY_TYPE, $site_auth_file_name, $auth->username ) );
+			$file = EE_CONF_ROOT . '/nginx/htpasswd/' . $site_auth_file_name;
+			if ( empty( trim( file_get_contents( $file ) ) ) ) {
+				$this->fs->remove( $file );
+			}
 			EE::success( sprintf( 'http auth successfully removed of user: %s for %s.', $username, $User_scope ) );
 		}
 
