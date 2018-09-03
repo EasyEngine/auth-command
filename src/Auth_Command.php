@@ -160,20 +160,34 @@ class Auth_Command extends EE_Command {
 	 *
 	 * [--user=<user>]
 	 * : Username that needs to be deleted.
+	 *
+	 * [--all]
+	 * : Delete auth on both site and admin-tools.
+	 *
+	 * [--site]
+	 * : Delete auth on site.
+	 *
+	 * [--admin-tools]
+	 * : Delete auth for admin-tools.
 	 */
 	public function delete( $args, $assoc_args ) {
 
 		$this->verify_htpasswd_is_present();
-		$global = $this->populate_info( $args, __FUNCTION__ );
-		$file   = $global ? 'default' : $this->site_data->site_url;
-		$user   = EE\Utils\get_flag_value( $assoc_args, 'user' );
+		$global   = $this->populate_info( $args, __FUNCTION__ );
+		$site_url = $global ? 'default' : $this->site_data->site_url;
+		$user     = EE\Utils\get_flag_value( $assoc_args, 'user' );
+		$scope    = $this->get_scope( $assoc_args );
+		$auths    = $this->get_auths( $site_url, $scope, $user );
 
-		if ( $user ) {
-			EE::exec( sprintf( 'docker exec %s htpasswd -D /etc/nginx/htpasswd/%s %s', EE_PROXY_TYPE, $this->site_data->site_url, $user ), true, true );
-		} else {
-			$this->fs->remove( EE_CONF_ROOT . '/nginx/htpasswd/' . $file );
-			EE::success( sprintf( 'http auth removed for `%s` scope', $this->site_data->site_url ) );
+		foreach ( $auths as $auth ) {
+			$auth->delete();
+			$site_auth_file_name = ( 'admin-tools' === $auth->scope ) ? $site_url . '_admin_tools' : $site_url;
+			EE::exec( sprintf( 'docker exec %s htpasswd -D /etc/nginx/htpasswd/%s %s', EE_PROXY_TYPE, $site_auth_file_name, $auth->username ) );
 		}
+
+		EE::success( 'http auth successfully removed.' );
+
+		EE::log( 'Reloading global reverse proxy.' );
 		reload_global_nginx_proxy();
 	}
 
@@ -453,10 +467,13 @@ class Auth_Command extends EE_Command {
 	 */
 	private function get_auths( $site_url, $scope, $user ) {
 
-		$where_conditions = [
-			'site_url' => $site_url,
-			'username' => $user,
-		];
+		$where_conditions = [ 'site_url' => $site_url ];
+
+		$user_error_msg = '';
+		if ( $user ) {
+			$where_conditions['username'] = $user;
+			$user_error_msg               = ' with username' . $user;
+		}
 
 		if ( 'all' !== $scope ) {
 			$where_conditions['scope'] = $scope;
@@ -466,11 +483,11 @@ class Auth_Command extends EE_Command {
 
 
 		if ( empty( $auths ) ) {
-			EE::error( "Auth with username $user does not exists on $site_url for scope $scope-wide" );
+			$all_error_msg  = ( 'all' === $scope ) ? '' : 'for ' . $scope;
+			$site_error_msg = ( 'default' === $site_url ) ? 'global' : $site_url;
+			EE::error( sprintf( 'Auth%s does not exists on %s %s', $user_error_msg, $site_error_msg, $all_error_msg ) );
 		}
 
 		return $auths;
-
 	}
-
 }
