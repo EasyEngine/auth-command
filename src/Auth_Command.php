@@ -43,7 +43,6 @@ class Auth_Command extends EE_Command {
 	 */
 	public function init() {
 
-		$this->verify_htpasswd_is_present();
 		$auth_data = [
 			'site_url' => 'default',
 			'username' => 'easyengine',
@@ -51,11 +50,10 @@ class Auth_Command extends EE_Command {
 		];
 
 		if ( ! empty( Auth::where( $auth_data ) ) ) {
-			EE::log( 'Global auth exists on admin-tools' );
-
 			return;
 		}
 
+		$this->verify_htpasswd_is_present();
 		$site_auth_file_name = $auth_data['site_url'] . '_admin_tools';
 		$pass                = EE\Utils\random_password();
 
