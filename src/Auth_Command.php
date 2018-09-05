@@ -87,8 +87,6 @@ class Auth_Command extends EE_Command {
 	 * [--admin-tools]
 	 * : Update auth on admin-tools.
 	 *
-	 * [--all]
-	 * : Update auth on both site and admin-tools. Default option if no parameter passed.
 	 */
 	public function create( $args, $assoc_args ) {
 
@@ -157,8 +155,6 @@ class Auth_Command extends EE_Command {
 	 * [--admin-tools]
 	 * : Update auth on admin-tools.
 	 *
-	 * [--all]
-	 * : Update auth on both site and admin-tools.
 	 */
 	public function update( $args, $assoc_args ) {
 
@@ -201,9 +197,6 @@ class Auth_Command extends EE_Command {
 	 * [--user=<user>]
 	 * : Username that needs to be deleted.
 	 *
-	 * [--all]
-	 * : Delete auth on both site and admin-tools.
-	 *
 	 * [--site]
 	 * : Delete auth on site.
 	 *
@@ -244,9 +237,6 @@ class Auth_Command extends EE_Command {
 	 *
 	 * [<site-name>]
 	 * : Name of website.
-	 *
-	 * [--all]
-	 * : List auth on both site and admin-tools.
 	 *
 	 * [--site]
 	 * : List auth on site.
