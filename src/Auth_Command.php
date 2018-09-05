@@ -15,8 +15,8 @@
  */
 
 use EE\Model\Auth;
-use EE\Model\Site;
 use Symfony\Component\Filesystem\Filesystem;
+use function EE\Auth\Utils\verify_htpasswd_is_present;
 use function EE\Site\Utils\auto_site_name;
 use function EE\Site\Utils\get_site_info;
 use function EE\Site\Utils\reload_global_nginx_proxy;
@@ -55,7 +55,8 @@ class Auth_Command extends EE_Command {
 			return;
 		}
 
-		$this->verify_htpasswd_is_present();
+		verify_htpasswd_is_present();
+
 		$site_auth_file_name = $auth_data['site_url'] . '_admin_tools';
 		$pass                = EE\Utils\random_password();
 
@@ -91,7 +92,8 @@ class Auth_Command extends EE_Command {
 	 */
 	public function create( $args, $assoc_args ) {
 
-		$this->verify_htpasswd_is_present();
+		verify_htpasswd_is_present();
+
 		$global = $this->populate_info( $args, __FUNCTION__ );
 		$scope  = $this->get_scope( $assoc_args );
 
@@ -160,7 +162,8 @@ class Auth_Command extends EE_Command {
 	 */
 	public function update( $args, $assoc_args ) {
 
-		$this->verify_htpasswd_is_present();
+		verify_htpasswd_is_present();
+
 		$scope  = $this->get_scope( $assoc_args );
 		$global = $this->populate_info( $args, __FUNCTION__ );
 
@@ -209,7 +212,8 @@ class Auth_Command extends EE_Command {
 	 */
 	public function delete( $args, $assoc_args ) {
 
-		$this->verify_htpasswd_is_present();
+		verify_htpasswd_is_present();
+
 		$global   = $this->populate_info( $args, __FUNCTION__ );
 		$site_url = $global ? 'default' : $this->site_data->site_url;
 		$user     = EE\Utils\get_flag_value( $assoc_args, 'user' );
@@ -464,18 +468,6 @@ class Auth_Command extends EE_Command {
 		}
 
 		return $global;
-	}
-
-	/**
-	 * Check if htpasswd is present in the global-container.
-	 */
-	private function verify_htpasswd_is_present() {
-
-		EE::debug( 'Verifying htpasswd is present.' );
-		if ( EE::exec( sprintf( 'docker exec %s sh -c \'command -v htpasswd\'', EE_PROXY_TYPE ) ) ) {
-			return;
-		}
-		EE::error( sprintf( 'Could not find apache2-utils installed in %s.', EE_PROXY_TYPE ) );
 	}
 
 	/**
