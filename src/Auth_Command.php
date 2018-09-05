@@ -82,10 +82,10 @@ class Auth_Command extends EE_Command {
 	 * : Password for http auth.
 	 *
 	 * [--site]
-	 * : Update auth on site.
+	 * : Create auth on site.
 	 *
 	 * [--admin-tools]
-	 * : Update auth on admin-tools.
+	 * : Create auth on admin-tools.
 	 *
 	 */
 	public function create( $args, $assoc_args ) {
