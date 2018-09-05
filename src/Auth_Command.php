@@ -263,12 +263,16 @@ class Auth_Command extends EE_Command {
 		$site_url = $global ? 'default' : $this->site_data->site_url;
 		$auths    = $this->get_auths( $site_url, $scope, false );
 
+		$users = [];
+
 		foreach ( $auths as $auth ) {
-			$users[] = [
-				'username' => $auth->username,
-				'password' => $auth->password,
-				'scope'    => $auth->scope,
-			];
+			if ( 'all' === $scope || $scope === $auth->scope ) {
+				$users[] = [
+					'username' => $auth->username,
+					'password' => $auth->password,
+					'scope'    => $auth->scope,
+				];
+			}
 		}
 
 		$formatter = new EE\Formatter( $assoc_args, [ 'username', 'password', 'scope' ] );
