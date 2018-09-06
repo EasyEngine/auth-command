@@ -1,0 +1,11 @@
+.DS_Store
+node_modules/
+vendor/
+*.zip
+*.tar.gz
+*.swp
+*.txt
+*.log
+composer.lock
+.idea
+*.db
