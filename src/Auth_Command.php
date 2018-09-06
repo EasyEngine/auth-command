@@ -44,7 +44,7 @@ class Auth_Command extends EE_Command {
 	 * ## OPTIONS
 	 *
 	 * [<site-name>]
-	 * : Name of website to be secured.
+	 * : Name of website / `global` for global scope.
 	 *
 	 * [--user=<user>]
 	 * : Username for http auth.
@@ -112,7 +112,7 @@ class Auth_Command extends EE_Command {
 	 * ## OPTIONS
 	 *
 	 * [<site-name>]
-	 * : Name of website to be secured.
+	 * : Name of website / `global` for global scope.
 	 *
 	 * [--user=<user>]
 	 * : Username for http auth.
@@ -157,13 +157,12 @@ class Auth_Command extends EE_Command {
 	}
 
 	/**
-	 * Deletes http auth for a site. Default: removes http auth from site. If `--user` is passed it removes that
-	 * specific user.
+	 * Deletes http auth for a site. Default: removes http auth from site. If `--user` is passed it removes that specific user.
 	 *
 	 * ## OPTIONS
 	 *
 	 * [<site-name>]
-	 * : Name of website.
+	 * : Name of website / `global` for global scope.
 	 *
 	 * [--user=<user>]
 	 * : Username that needs to be deleted.
@@ -207,7 +206,7 @@ class Auth_Command extends EE_Command {
 	 * ## OPTIONS
 	 *
 	 * [<site-name>]
-	 * : Name of website.
+	 * : Name of website / `global` for global scope.
 	 *
 	 * [--site]
 	 * : List auth on site.
@@ -268,7 +267,7 @@ class Auth_Command extends EE_Command {
 	 * : Remove whitelisted ip's of a site or of global scope.
 	 *
 	 * [<site-name>]
-	 * : Name of website to be secured / `global` for global scope.
+	 * : Name of website / `global` for global scope.
 	 *
 	 * [--ip=<ip>]
 	 * : Comma seperated ips.
