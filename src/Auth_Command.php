@@ -102,8 +102,8 @@ class Auth_Command extends EE_Command {
 		reload_global_nginx_proxy();
 
 		EE::success( sprintf( 'Auth successfully updated for `%s` scope. New values added/updated:', $this->site_data->site_url ) );
-		EE::log( 'User: ' . $user );
-		EE::log( 'Pass: ' . $pass );
+		EE::line( 'User: ' . $user );
+		EE::line( 'Pass: ' . $pass );
 	}
 
 	/**
@@ -152,8 +152,8 @@ class Auth_Command extends EE_Command {
 		reload_global_nginx_proxy();
 
 		EE::success( sprintf( 'Auth successfully updated for `%s` scope. New values added/updated:', $this->site_data->site_url ) );
-		EE::log( 'User: ' . $user );
-		EE::log( 'Pass: ' . $pass );
+		EE::line( 'User: ' . $user );
+		EE::line( 'Pass: ' . $pass );
 	}
 
 	/**
@@ -343,7 +343,7 @@ class Auth_Command extends EE_Command {
 
 		EE::log( sprintf( 'Whitelisted IP\'s for %s scope', $this->site_data->site_url ) );
 		foreach ( $existing_ips as $ips ) {
-			EE::log( $ips );
+			EE::line( $ips );
 		}
 	}
 
