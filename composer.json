@@ -9,9 +9,13 @@
     "prefer-stable": true,
     "autoload": {
         "psr-4": {
-            "": "src/"
+            "": "src/",
+            "\\EE\\Model\\": "src/db/"
         },
-        "files": [ "auth-command.php" ]
+        "files": [
+            "src/auth-utils.php",
+            "auth-command.php"
+        ]
     },
     "extra": {
         "branch-alias": {

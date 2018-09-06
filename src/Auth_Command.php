@@ -14,8 +14,12 @@
  * @package ee-cli
  */
 
-use EE\Model\Site;
-use \Symfony\Component\Filesystem\Filesystem;
+use EE\Model\Auth;
+use Symfony\Component\Filesystem\Filesystem;
+use function EE\Auth\Utils\verify_htpasswd_is_present;
+use function EE\Site\Utils\auto_site_name;
+use function EE\Site\Utils\get_site_info;
+use function EE\Site\Utils\reload_global_nginx_proxy;
 
 class Auth_Command extends EE_Command {
 
@@ -35,72 +39,165 @@ class Auth_Command extends EE_Command {
 	}
 
 	/**
-	 * Creates/Updates http auth for a site.
+	 * Creates http auth for a site.
 	 *
 	 * ## OPTIONS
 	 *
 	 * [<site-name>]
-	 * : Name of website to be secured.
+	 * : Name of website / `global` for global scope.
 	 *
 	 * [--user=<user>]
 	 * : Username for http auth.
 	 *
 	 * [--pass=<pass>]
-	 * : Password for http auth
+	 * : Password for http auth.
 	 *
-	 * @alias update
+	 * [--site]
+	 * : Create auth on site.
+	 *
+	 * [--admin-tools]
+	 * : Create auth on admin-tools.
+	 *
 	 */
 	public function create( $args, $assoc_args ) {
 
-		$global = $this->populate_info( $args, __FUNCTION__ );
+		verify_htpasswd_is_present();
 
-		EE::debug( sprintf( 'ee auth start, Site: %s', $this->site_data->site_url ) );
+		$global = $this->populate_info( $args, __FUNCTION__ );
+		$scope  = $this->get_scope( $assoc_args );
 
 		$user = EE\Utils\get_flag_value( $assoc_args, 'user', 'easyengine' );
 		$pass = EE\Utils\get_flag_value( $assoc_args, 'pass', EE\Utils\random_password() );
 
-		EE::debug( 'Verifying htpasswd is present.' );
-		$check_htpasswd_present = EE::exec( sprintf( 'docker exec %s sh -c \'command -v htpasswd\'', EE_PROXY_TYPE ) );
-		if ( ! $check_htpasswd_present ) {
-			EE::error( sprintf( 'Could not find apache2-utils installed in %s.', EE_PROXY_TYPE ) );
+		$site_url = $global ? 'default' : $this->site_data->site_url;
+
+		if ( ! empty( $this->get_auths( $site_url, $scope, $user, false ) ) ) {
+			$site_url = ( 'default' === $site_url ) ? 'global' : $site_url;
+			EE::error( "Auth with username $user already exists on $site_url for --$scope." );
 		}
-		$file   = $global ? 'default' : $this->site_data->site_url;
-		$params = $this->fs->exists( EE_CONF_ROOT . '/nginx/htpasswd/' . $file ) ? 'b' : 'bc';
-		EE::exec( sprintf( 'docker exec %s htpasswd -%s /etc/nginx/htpasswd/%s %s %s', EE_PROXY_TYPE, $params, $file, $user, $pass ) );
+
+		$auth_data = [
+			'site_url' => $site_url,
+			'username' => $user,
+			'password' => $pass,
+			'scope'    => 'site',
+		];
+
+		if ( 'site' === $scope || 'all' === $scope ) {
+			$site_auth_file_name = $site_url;
+			Auth::create( $auth_data );
+			$params = $this->fs->exists( EE_CONF_ROOT . '/nginx/htpasswd/' . $site_auth_file_name ) ? 'b' : 'bc';
+			EE::exec( sprintf( 'docker exec %s htpasswd -%s /etc/nginx/htpasswd/%s %s %s', EE_PROXY_TYPE, $params, $site_auth_file_name, $user, $pass ) );
+		}
+
+		if ( 'admin-tools' === $scope || 'all' === $scope ) {
+			$site_auth_file_name = $site_url . '_admin_tools';
+			$auth_data['scope']  = 'admin-tools';
+			Auth::create( $auth_data );
+			$params = $this->fs->exists( EE_CONF_ROOT . '/nginx/htpasswd/' . $site_auth_file_name ) ? 'b' : 'bc';
+			EE::exec( sprintf( 'docker exec %s htpasswd -%s /etc/nginx/htpasswd/%s %s %s', EE_PROXY_TYPE, $params, $site_auth_file_name, $user, $pass ) );
+		}
 
 		EE::log( 'Reloading global reverse proxy.' );
-		$this->reload();
+		reload_global_nginx_proxy();
 
 		EE::success( sprintf( 'Auth successfully updated for `%s` scope. New values added/updated:', $this->site_data->site_url ) );
-		EE::log( 'User:' . $user );
-		EE::log( 'Pass:' . $pass );
+		EE::line( 'User: ' . $user );
+		EE::line( 'Pass: ' . $pass );
 	}
 
 	/**
-	 * Deletes http auth for a site. Default: removes http auth from site. If `--user` is passed it removes that
-	 * specific user.
+	 * Updates http auth for a site.
 	 *
 	 * ## OPTIONS
 	 *
 	 * [<site-name>]
-	 * : Name of website.
+	 * : Name of website / `global` for global scope.
+	 *
+	 * [--user=<user>]
+	 * : Username for http auth.
+	 *
+	 * [--pass=<pass>]
+	 * : Password for http auth.
+	 *
+	 * [--site]
+	 * : Update auth on site.
+	 *
+	 * [--admin-tools]
+	 * : Update auth on admin-tools.
+	 *
+	 */
+	public function update( $args, $assoc_args ) {
+
+		verify_htpasswd_is_present();
+
+		$scope  = $this->get_scope( $assoc_args );
+		$global = $this->populate_info( $args, __FUNCTION__ );
+
+		$user = EE\Utils\get_flag_value( $assoc_args, 'user', 'easyengine' );
+		$pass = EE\Utils\get_flag_value( $assoc_args, 'pass', EE\Utils\random_password() );
+
+		$site_url = $global ? 'default' : $this->site_data->site_url;
+		$auths    = $this->get_auths( $site_url, $scope, $user );
+
+		foreach ( $auths as $auth ) {
+			$auth->update( [
+				'password' => $pass,
+			] );
+			$site_auth_file_name = ( 'admin-tools' === $auth->scope ) ? $site_url . '_admin_tools' : $site_url;
+			EE::exec( sprintf( 'docker exec %s htpasswd -b /etc/nginx/htpasswd/%s %s %s', EE_PROXY_TYPE, $site_auth_file_name, $user, $pass ) );
+		}
+
+		EE::log( 'Reloading global reverse proxy.' );
+		reload_global_nginx_proxy();
+
+		EE::success( sprintf( 'Auth successfully updated for `%s` scope. New values added/updated:', $this->site_data->site_url ) );
+		EE::line( 'User: ' . $user );
+		EE::line( 'Pass: ' . $pass );
+	}
+
+	/**
+	 * Deletes http auth for a site. Default: removes http auth from site. If `--user` is passed it removes that specific user.
+	 *
+	 * ## OPTIONS
+	 *
+	 * [<site-name>]
+	 * : Name of website / `global` for global scope.
 	 *
 	 * [--user=<user>]
 	 * : Username that needs to be deleted.
+	 *
+	 * [--site]
+	 * : Delete auth on site.
+	 *
+	 * [--admin-tools]
+	 * : Delete auth for admin-tools.
 	 */
 	public function delete( $args, $assoc_args ) {
 
-		$global = $this->populate_info( $args, __FUNCTION__ );
-		$file   = $global ? 'default' : $this->site_data->site_url;
-		$user   = EE\Utils\get_flag_value( $assoc_args, 'user' );
+		verify_htpasswd_is_present();
 
-		if ( $user ) {
-			EE::exec( sprintf( 'docker exec %s htpasswd -D /etc/nginx/htpasswd/%s %s', EE_PROXY_TYPE, $this->site_data->site_url, $user ), true, true );
-		} else {
-			$this->fs->remove( EE_CONF_ROOT . '/nginx/htpasswd/' . $file );
-			EE::success( sprintf( 'http auth removed for `%s` scope', $this->site_data->site_url ) );
+		$global   = $this->populate_info( $args, __FUNCTION__ );
+		$site_url = $global ? 'default' : $this->site_data->site_url;
+		$user     = EE\Utils\get_flag_value( $assoc_args, 'user' );
+		$scope    = $this->get_scope( $assoc_args );
+		$auths    = $this->get_auths( $site_url, $scope, $user );
+
+		foreach ( $auths as $auth ) {
+			$username   = $auth->username;
+			$User_scope = $auth->scope;
+			$auth->delete();
+			$site_auth_file_name = ( 'admin-tools' === $auth->scope ) ? $site_url . '_admin_tools' : $site_url;
+			EE::exec( sprintf( 'docker exec %s htpasswd -D /etc/nginx/htpasswd/%s %s', EE_PROXY_TYPE, $site_auth_file_name, $auth->username ) );
+			$file = EE_CONF_ROOT . '/nginx/htpasswd/' . $site_auth_file_name;
+			if ( empty( trim( file_get_contents( $file ) ) ) ) {
+				$this->fs->remove( $file );
+			}
+			EE::success( sprintf( 'http auth successfully removed of user: %s for %s.', $username, $User_scope ) );
 		}
-		$this->reload();
+
+		EE::log( 'Reloading global reverse proxy.' );
+		reload_global_nginx_proxy();
 	}
 
 	/**
@@ -109,7 +206,13 @@ class Auth_Command extends EE_Command {
 	 * ## OPTIONS
 	 *
 	 * [<site-name>]
-	 * : Name of website.
+	 * : Name of website / `global` for global scope.
+	 *
+	 * [--site]
+	 * : List auth on site.
+	 *
+	 * [--admin-tools]
+	 * : List auth for admin-tools.
 	 *
 	 * [--format=<format>]
 	 * : Render output in a particular format.
@@ -121,31 +224,29 @@ class Auth_Command extends EE_Command {
 	 *   - yaml
 	 *   - json
 	 *   - count
-	 *   - text
 	 * ---
 	 */
 	public function list( $args, $assoc_args ) {
 
-		$global = $this->populate_info( $args, __FUNCTION__ );
-		$file   = EE_CONF_ROOT . '/nginx/htpasswd/' . ( $global ? 'default' : $this->site_data->site_url );
-		$format = EE\Utils\get_flag_value( $assoc_args, 'format' );
-		if ( $this->fs->exists( $file ) ) {
-			$user_lines = explode( PHP_EOL, trim( file_get_contents( $file ) ) );
-			foreach ( $user_lines as $line ) {
-				$users[]['users'] = strstr( $line, ':', true );
-			}
+		$global   = $this->populate_info( $args, __FUNCTION__ );
+		$scope    = $this->get_scope( $assoc_args );
+		$site_url = $global ? 'default' : $this->site_data->site_url;
+		$auths    = $this->get_auths( $site_url, $scope, false );
 
-			if ( 'text' === $format ) {
-				foreach ( $users as $user ) {
-					EE::log( $user['users'] );
-				}
-			} else {
-				$formatter = new EE\Formatter( $assoc_args, [ 'users' ] );
-				$formatter->display_items( $users );
+		$users = [];
+
+		foreach ( $auths as $auth ) {
+			if ( 'all' === $scope || $scope === $auth->scope ) {
+				$users[] = [
+					'username' => $auth->username,
+					'password' => $auth->password,
+					'scope'    => $auth->scope,
+				];
 			}
-		} else {
-			EE::error( sprintf( 'http auth not enabled on %s', $this->site_data->site_url ) );
 		}
+
+		$formatter = new EE\Formatter( $assoc_args, [ 'username', 'password', 'scope' ] );
+		$formatter->display_items( $users );
 	}
 
 	/**
@@ -166,7 +267,7 @@ class Auth_Command extends EE_Command {
 	 * : Remove whitelisted ip's of a site or of global scope.
 	 *
 	 * [<site-name>]
-	 * : Name of website to be secured / `global` for global scope.
+	 * : Name of website / `global` for global scope.
 	 *
 	 * [--ip=<ip>]
 	 * : Comma seperated ips.
@@ -196,7 +297,7 @@ class Auth_Command extends EE_Command {
 
 		call_user_func_array( [ $this, "whitelist_$command" ], [ $file, $user_ips, $existing_ips ] );
 
-		$this->reload();
+		reload_global_nginx_proxy();
 	}
 
 	/**
@@ -241,7 +342,7 @@ class Auth_Command extends EE_Command {
 
 		EE::log( sprintf( 'Whitelisted IP\'s for %s scope', $this->site_data->site_url ) );
 		foreach ( $existing_ips as $ips ) {
-			EE::log( $ips );
+			EE::line( $ips );
 		}
 	}
 
@@ -271,14 +372,6 @@ class Auth_Command extends EE_Command {
 		}
 		EE::warning( sprintf( 'Could not find %s IP\'s from whitelist of `%s` scope', implode( ',', $leftover_ips ), $this->site_data->site_url ) );
 		EE::success( sprintf( 'Removed %s IP\'s from whitelist of `%s` scope', implode( ',', $removed_ips ), $this->site_data->site_url ) );
-	}
-
-	/**
-	 * Function to reload the global reverse proxy to update the effect of changes done.
-	 */
-	private function reload() {
-
-		EE::exec( sprintf( 'docker exec %s sh -c "/app/docker-entrypoint.sh /usr/local/bin/docker-gen /app/nginx.tmpl /etc/nginx/conf.d/default.conf; /usr/sbin/nginx -s reload"', EE_PROXY_TYPE ) );
 	}
 
 	/**
@@ -334,14 +427,67 @@ class Auth_Command extends EE_Command {
 			$this->site_data = (object) [ 'site_url' => $args[0] ];
 			$global          = true;
 		} else {
-			$args            = EE\SiteUtils\auto_site_name( $args, 'auth', $command );
-			$this->site_data = Site::find( EE\Utils\remove_trailing_slash( $args[0] ) );
-			if ( ! $this->site_data || ! $this->site_data->site_enabled ) {
-				EE::error( sprintf( 'Site %s does not exist / is not enabled.', $args[0] ) );
-			}
+			$args            = auto_site_name( $args, 'auth', $command );
+			$this->site_data = get_site_info( $args, true, true, false );
 		}
 
 		return $global;
 	}
 
+	/**
+	 * Get the appropriate scope from passed associative arguments.
+	 *
+	 * @param array $assoc_args Passed associative arguments.
+	 *
+	 * @return string Found scope.
+	 */
+	private function get_scope( $assoc_args ) {
+
+		$scope_site        = $assoc_args['site'] ?? false;
+		$scope_admin_tools = $assoc_args['admin-tools'] ?? false;
+
+		if ( $scope_site && ! $scope_admin_tools ) {
+			return 'site';
+		}
+
+		if ( $scope_admin_tools && ! $scope_site ) {
+			return 'admin-tools';
+		}
+
+		return 'all';
+	}
+
+	/**
+	 * Gets all the authentication objects from db.
+	 *
+	 * @param string $site_url Site URL.
+	 * @param string $scope    The scope of auth.
+	 * @param string $user     User for which the auth need to be fetched.
+	 *
+	 * @return array Array of auth models.
+	 */
+	private function get_auths( $site_url, $scope, $user, $error_if_empty = true ) {
+
+		$where_conditions = [ 'site_url' => $site_url ];
+
+		$user_error_msg = '';
+		if ( $user ) {
+			$where_conditions['username'] = $user;
+			$user_error_msg               = ' with username: ' . $user;
+		}
+
+		if ( 'all' !== $scope ) {
+			$where_conditions['scope'] = $scope;
+		}
+
+		$auths = Auth::where( $where_conditions );
+
+		if ( empty( $auths ) && $error_if_empty ) {
+			$all_error_msg  = ( 'all' === $scope ) ? '' : 'for ' . $scope;
+			$site_error_msg = ( 'default' === $site_url ) ? 'global' : $site_url;
+			EE::error( sprintf( 'Auth%s does not exists on %s %s', $user_error_msg, $site_error_msg, $all_error_msg ) );
+		}
+
+		return $auths;
+	}
 }
