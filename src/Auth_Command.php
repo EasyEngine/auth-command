@@ -58,6 +58,20 @@ class Auth_Command extends EE_Command {
 	 * [--admin-tools]
 	 * : Create auth on admin-tools.
 	 *
+	 * ## EXAMPLES
+	 *
+	 *     # Add auth on site and its admin-tools with default username(easyengine) and random password
+	 *     $ ee auth create example.com
+	 *
+	 *     # Add auth on site and its admin-tools with predefined username and password
+	 *     $ ee auth create example.com --user=test --pass=pasword
+	 *
+	 *     # Add auth only on admin-tools
+	 *     $ ee auth create example.com --admin-tools
+	 *
+	 *     # Add auth on site and its admin-tools with default username(easyengine) and random password
+	 *     $ ee auth create example.com --pass=password
+	 *
 	 */
 	public function create( $args, $assoc_args ) {
 
@@ -107,7 +121,7 @@ class Auth_Command extends EE_Command {
 	}
 
 	/**
-	 * Updates http auth for a site.
+	 * Updates http auth password for a site.
 	 *
 	 * ## OPTIONS
 	 *
@@ -125,6 +139,11 @@ class Auth_Command extends EE_Command {
 	 *
 	 * [--admin-tools]
 	 * : Update auth on admin-tools.
+	 *
+	 * ## EXAMPLES
+	 *
+	 *     # Add auth on site and its admin-tools with default username(easyengine) and random password
+	 *     $ ee auth create example.com
 	 *
 	 */
 	public function update( $args, $assoc_args ) {
