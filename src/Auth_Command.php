@@ -56,23 +56,23 @@ class Auth_Command extends EE_Command {
 	 * : Create auth on site.
 	 *
 	 * [--admin-tools]
-	 * : Create auth on admin-tools.
+	 * : Create auth on admin tools.
 	 *
 	 * ## EXAMPLES
 	 *
-	 *     # Add auth on site and its admin-tools with default username(easyengine) and random password
+	 *     # Add auth on site and its admin tools with default username(easyengine) and random password
 	 *     $ ee auth create example.com
 	 *
-	 *     # Add auth on all sites and its admin-tools with default username and random password
+	 *     # Add auth on all sites and its admin tools with default username and random password
 	 *     $ ee auth create global
 	 *
-	 *     # Add auth on site and its admin-tools with predefined username and password
+	 *     # Add auth on site and its admin tools with predefined username and password
 	 *     $ ee auth create example.com --user=test --pass=password
 	 *
-	 *     # Add auth only on admin-tools
+	 *     # Add auth only on admin tools
 	 *     $ ee auth create example.com --admin-tools
 	 *
-	 *     # Add auth on site and its admin-tools with default username and random password
+	 *     # Add auth on site and its admin tools with default username and random password
 	 *     $ ee auth create example.com --pass=password
 	 *
 	 */
@@ -141,23 +141,23 @@ class Auth_Command extends EE_Command {
 	 * : Update auth on site.
 	 *
 	 * [--admin-tools]
-	 * : Update auth on admin-tools.
+	 * : Update auth on admin tools.
 	 *
 	 * ## EXAMPLES
 	 *
-	 *     # Update auth password on site and its admin-tools with default username(easyengine) and random password
+	 *     # Update auth password on site and its admin tools with default username(easyengine) and random password
 	 *     $ ee auth update example.com
 	 *
-	 *     # Update auth password on all sites and its admin-tools with default username and random password
+	 *     # Update auth password on all sites and its admin tools with default username and random password
 	 *     $ ee auth update global
 	 *
-	 *     # Update auth password on site and its admin-tools with predefined username and password
+	 *     # Update auth password on site and its admin tools with predefined username and password
 	 *     $ ee auth update example.com --user=test --pass=password
 	 *
-	 *     # Update auth password only on admin-tools
+	 *     # Update auth password only on admin tools
 	 *     $ ee auth update example.com --admin-tools
 	 *
-	 *     # Update auth password on site and its admin-tools with default username and random password
+	 *     # Update auth password on site and its admin tools with default username and random password
 	 *     $ ee auth update example.com --pass=password
 	 *
 	 */
@@ -205,7 +205,22 @@ class Auth_Command extends EE_Command {
 	 * : Delete auth on site.
 	 *
 	 * [--admin-tools]
-	 * : Delete auth for admin-tools.
+	 * : Delete auth for admin tools.
+	 *
+	 * ## EXAMPLES
+	 *
+	 *     # Remove auth on site and its admin tools with default username(easyengine)
+	 *     $ ee auth delete example.com
+	 *
+	 *     # Remove auth on site and its admin tools with custom username
+	 *     $ ee auth delete example.com --user=example
+	 *
+	 *     # Remove global auth on all site's admin tools with default username(easyengine)
+	 *     $ ee auth delete example.com --admin-tools
+	 *
+	 *     # Remove global auth on all sites (but not admin tools) with default username(easyengine)
+	 *     $ ee auth delete example.com --site
+	 *
 	 */
 	public function delete( $args, $assoc_args ) {
 
@@ -259,6 +274,15 @@ class Auth_Command extends EE_Command {
 	 *   - json
 	 *   - count
 	 * ---
+	 *
+	 * ## EXAMPLES
+	 *
+	 *     # List all auth on site
+	 *     $ ee auth list example.com
+	 *
+	 *     # List all global auth
+	 *     $ ee auth list global
+	 *
 	 */
 	public function list( $args, $assoc_args ) {
 
@@ -284,7 +308,7 @@ class Auth_Command extends EE_Command {
 	}
 
 	/**
-	 * create, append, remove, list ip whitelisting for a site or globally.
+	 * Create, append, remove, list ip whitelisting for a site or globally.
 	 *
 	 * ## OPTIONS
 	 *
@@ -305,10 +329,30 @@ class Auth_Command extends EE_Command {
 	 *
 	 * [--ip=<ip>]
 	 * : Comma seperated ips.
+	 *
+	 * ## EXAMPLES
+	 *
+	 *     # Whitelisted IP on site
+	 *     $ ee auth whitelist create example.com --ip=127.0.0.1,192.168.0.1
+	 *
+	 *     # Whitelist IP on site where previous whitelisting are present
+	 *     $ ee auth whitelist append example.com --ip=127.0.0.1
+	 *
+	 *     # List all whitelisted ips on site
+	 *     $ ee auth whitelist list example.com
+	 *
+	 *     # Remove a whitelisted IP on site
+	 *     $ ee auth whitelist remove example.com --ip=127.0.0.1
+	 *
+	 *     # Remove all whitelisted IPs on site
+	 *     $ ee auth whitelist remove example.com --ip=all
+	 *
+	 *     # Above all will work for global auth by replacing site name with global
+	 *
 	 */
 	public function whitelist( $args, $assoc_args ) {
 
-		// Note: If new sub-commands for whitelisting is added, function for it and this varibale needs to be updated.
+		// Note: If new sub-commands for whitelisting is added, function for it and this variable needs to be updated.
 		$commands = [ 'create', 'append', 'list', 'remove' ];
 		if ( ! ( isset( $args[0] ) && in_array( $args[0], $commands ) ) ) {
 			$help = PHP_EOL;
@@ -364,9 +408,11 @@ class Auth_Command extends EE_Command {
 	/**
 	 * Function to list whitelisted ips.
 	 *
-	 * @param string $file        The whitelisting file.
-	 * @param array $user_ips     ip's provided by the user.
-	 * @param array $existing_ips Existing ip's in the given file.
+	 * @param string $file         The whitelisting file.
+	 * @param array  $user_ips     ip's provided by the user.
+	 * @param array  $existing_ips Existing ip's in the given file.
+	 *
+	 * @throws \EE\ExitException
 	 */
 	private function whitelist_list( $file, $user_ips, $existing_ips ) {
 
@@ -383,9 +429,11 @@ class Auth_Command extends EE_Command {
 	/**
 	 * Function to remove whitelisted ips.
 	 *
-	 * @param string $file        The whitelisting file.
-	 * @param array $user_ips     ip's provided by the user.
-	 * @param array $existing_ips Existing ip's in the given file.
+	 * @param string $file         The whitelisting file.
+	 * @param array  $user_ips     ip's provided by the user.
+	 * @param array  $existing_ips Existing ip's in the given file.
+	 *
+	 * @throws \EE\ExitException
 	 */
 	private function whitelist_remove( $file, $user_ips, $existing_ips ) {
 
@@ -498,6 +546,7 @@ class Auth_Command extends EE_Command {
 	 * @param string $scope    The scope of auth.
 	 * @param string $user     User for which the auth need to be fetched.
 	 *
+	 * @throws \EE\ExitException
 	 * @return array Array of auth models.
 	 */
 	private function get_auths( $site_url, $scope, $user, $error_if_empty = true ) {
