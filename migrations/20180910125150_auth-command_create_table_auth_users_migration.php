@@ -19,6 +19,11 @@ class CreateTableAuthUsersMigration extends Base {
 
 	}
 
+	/**
+	 * Execute create table query for auth_users table.
+	 *
+	 * @throws EE\ExitException
+	 */
 	public function up() {
 
 		$query = 'CREATE TABLE auth_users (
@@ -33,10 +38,15 @@ class CreateTableAuthUsersMigration extends Base {
 		try {
 			self::$pdo->exec( $query );
 		} catch ( PDOException $exception ) {
-			EE::error( 'Encountered Error while creating table: ' . $exception->getMessage() );
+			EE::error( 'Encountered Error while creating table: ' . $exception->getMessage(), false );
 		}
 	}
 
+	/**
+	 * Execute drop table query for auth_users table.
+	 *
+	 * @throws EE\ExitException
+	 */
 	public function down() {
 
 		$query = 'DROP TABLE IF EXISTS auth_users;';
@@ -44,7 +54,7 @@ class CreateTableAuthUsersMigration extends Base {
 		try {
 			self::$pdo->exec( $query );
 		} catch ( PDOException $exception ) {
-			EE::error( 'Encountered Error while dropping table: ' . $exception->getMessage() );
+			EE::error( 'Encountered Error while dropping table: ' . $exception->getMessage(), false );
 		}
 	}
 }
