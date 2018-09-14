@@ -12,20 +12,6 @@ class Auth extends Base {
 	protected static $table = 'auth_users';
 
 	/**
-	 * Method to return all global auth
-	 *
-	 * @throws \Exception
-	 * @return array
-	 */
-	public static function get_global_auths() {
-		return static::where(
-			[
-				'site_url' => 'default',
-			]
-		);
-	}
-
-	/**
 	 * Returns global admin tools auth object
 	 *
 	 * @throws \Exception
@@ -71,29 +57,49 @@ class Auth extends Base {
 			throw new \Exception( 'site_url, username and password should be provided' );
 		}
 
-		$existing_auths = static::where(
-			[
-				'username' => $columns['username'],
-			]
-		);
-
-		$error_message = "There already exists an username ${columns['username']} on some site or globally. You cannot use this username";
-
-		$existing_auths = array_filter(
-			$existing_auths, function ( $auth ) use ( $columns ) {
-				$global_upgrade = 'default' === $columns['site_url'] && 'default_admin_tools' === $auth->site_url;
-
-				if ( $global_upgrade ) {
-					return false;
-				}
-
-				return ( $columns['site_url'] !== $auth->site_url );
-			}
-		);
+		if ( 'default' === $columns['site_url'] ) {
+			$existing_auths = static::where(
+				[
+					[ 'username', $columns['username'] ],
+					[ 'site_url', '!=', 'default_admin_tools' ],
+				]
+			);
+			$error_message = sprintf( 'There already exists an username %s on some site or globally. You cannot use this username', $columns['username'] );
+		} else {
+			$existing_auths = array_merge(
+				static::where(
+					[
+						'username' => $columns['username'],
+						'site_url' => 'default',
+					]
+				),
+				static::where(
+					[
+						'username' => $columns['username'],
+						'site_url' => $columns['site_url'],
+					]
+				)
+			);
+			$error_message = sprintf( 'There already exists an username %s on this site or globally. You cannot use this username', $columns['username'] );
+		}
 
 		if ( ! empty( $existing_auths ) ) {
 			EE::error( $error_message );
 		}
+	}
+
+	/**
+	 * Method to return all global auth
+	 *
+	 * @throws \Exception
+	 * @return array
+	 */
+	public static function get_global_auths() {
+		return static::where(
+			[
+				'site_url' => 'default',
+			]
+		);
 	}
 
 	/**
