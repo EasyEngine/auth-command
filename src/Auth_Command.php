@@ -15,7 +15,6 @@
  */
 
 use EE\Model\Auth;
-use EE\Model\Site;
 use EE\Model\Whitelist;
 use Symfony\Component\Filesystem\Filesystem;
 use function EE\Auth\Utils\verify_htpasswd_is_present;
@@ -204,7 +203,11 @@ class Auth_Command extends EE_Command {
 				EE::exec( sprintf( 'docker exec %s htpasswd -%s /etc/nginx/htpasswd/default %s %s', EE_PROXY_TYPE, $flags, $auth->username, $auth->password ) );
 			}
 
-			$sites = Site::all( [ 'site_url' ] );
+			$sites = array_unique(
+				array_column(
+					Auth::all( [ 'site_url' ], 'site_url' )
+				)
+			);
 
 			foreach ( $sites as $site ) {
 				$this->generate_site_auth_files( $site->site_url );
@@ -246,7 +249,11 @@ class Auth_Command extends EE_Command {
 	private function generate_global_whitelist() {
 		$this->generate_site_whitelist( 'default' );
 
-		$sites = Site::all( [ 'site_url' ] );
+		$sites = array_unique(
+			array_column(
+				Whitelist::all( [ 'site_url' ], 'site_url' )
+			)
+		);
 
 		foreach ( $sites as $site ) {
 			$this->generate_site_whitelist( $site->site_url );
