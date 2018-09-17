@@ -1,7 +1,7 @@
 easyengine/auth-command
 =======================
 
-Configure HTTP auth for EasyEngine site.
+Configure HTTP Authentication and whitelisting for EasyEngine site
 
 
 
