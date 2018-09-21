@@ -31,7 +31,6 @@ class CreateTableAuthUsersMigration extends Base {
 			site_url VARCHAR NOT NULL,
 			username VARCHAR NOT NULL,
 			password VARCHAR NOT NULL,
-			scope    VARCHAR NOT NULL,
 			PRIMARY KEY (id)
 		);';
 
