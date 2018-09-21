@@ -35,6 +35,14 @@ class CreateTableAuthUsersMigration extends Base {
 			PRIMARY KEY (id)
 		);';
 
+		$query .= 'CREATE TABLE auth_ips (
+			id INTEGER,
+			site_url VARCHAR NOT NULL,
+			ip       VARCHAR NOT NULL,
+			UNIQUE (site_url, ip),
+			PRIMARY KEY (id)
+		);';
+
 		try {
 			self::$pdo->exec( $query );
 		} catch ( PDOException $exception ) {
@@ -49,7 +57,8 @@ class CreateTableAuthUsersMigration extends Base {
 	 */
 	public function down() {
 
-		$query = 'DROP TABLE IF EXISTS auth_users;';
+		$query  = 'DROP TABLE IF EXISTS auth_users;';
+		$query .= 'DROP TABLE IF EXISTS auth_ips;';
 
 		try {
 			self::$pdo->exec( $query );
