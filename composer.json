@@ -1,6 +1,6 @@
 {
     "name": "easyengine/auth-command",
-    "description": "Configure HTTP auth for EasyEngine site.",
+    "description": "Configure HTTP Authentication and whitelisting for EasyEngine site",
     "type": "ee-cli-package",
     "homepage": "https://github.com/easyengine/auth-command",
     "license": "MIT",
@@ -23,7 +23,12 @@
         },
         "bundled": true,
         "commands": [
-            "auth"
+            "auth",
+            "auth create",
+            "auth delete",
+            "auth list",
+            "auth update",
+            "auth whitelist"
         ]
     }
 }
