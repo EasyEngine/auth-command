@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Adds HTTP auth to a site.
+ * Configure HTTP Authentication and whitelisting for EasyEngine site
  *
  * ## EXAMPLES
  *
@@ -39,7 +39,7 @@ class Auth_Command extends EE_Command {
 	}
 
 	/**
-	 * Creates http auth for a site.
+	 * Creates http authentication for a site.
 	 *
 	 * ## OPTIONS
 	 *
@@ -124,7 +124,7 @@ class Auth_Command extends EE_Command {
 	}
 
 	/**
-	 * Updates http auth password for a site.
+	 * Updates http authentication password for a site.
 	 *
 	 * ## OPTIONS
 	 *
@@ -191,7 +191,7 @@ class Auth_Command extends EE_Command {
 	}
 
 	/**
-	 * Deletes http auth for a site. Default: removes http auth from site. If `--user` is passed it removes that specific user.
+	 * Deletes http authentication for a site. Default: removes http authentication from site. If `--user` is passed it removes that specific user.
 	 *
 	 * ## OPTIONS
 	 *
@@ -250,7 +250,7 @@ class Auth_Command extends EE_Command {
 	}
 
 	/**
-	 * Lists http auth users of a site.
+	 * Lists http authentication users of a site.
 	 *
 	 * ## OPTIONS
 	 *
