@@ -106,9 +106,6 @@ class Auth_Command extends EE_Command {
 
 			$admin_tools_auth = Auth::get_global_admin_tools_auth();
 			if ( 'default' === $site_url && ! empty( $admin_tools_auth ) ) {
-					$user = $admin_tools_auth[0]->username;
-					$pass = $admin_tools_auth[0]->password;
-
 					$admin_tools_auth[0]->site_url = 'default';
 					$admin_tools_auth[0]->save();
 			} else {
@@ -128,7 +125,6 @@ class Auth_Command extends EE_Command {
 			EE::line( 'User: ' . $user );
 			EE::line( 'Pass: ' . $pass );
 		} else {
-			$file = EE_CONF_ROOT . '/nginx/vhost.d/' . $site_url . '_acl';
 			// TODO: Validate IPs
 			$user_ips = array_filter( explode( ',', $ip ), 'strlen' );      // Remove empty IPs
 
@@ -562,7 +558,6 @@ class Auth_Command extends EE_Command {
 	 *
 	 */
 	public function list( $args, $assoc_args ) {
-		//TODO: handle global_admin_tools
 
 		$global   = $this->populate_info( $args, __FUNCTION__ );
 		$site_url = $global ? 'default' : $this->site_data->site_url;
