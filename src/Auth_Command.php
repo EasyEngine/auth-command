@@ -121,7 +121,7 @@ class Auth_Command extends EE_Command {
 			EE::log( 'Reloading global reverse proxy.' );
 			reload_global_nginx_proxy();
 
-			EE::success( sprintf( 'Auth successfully updated for `%s` scope. New values added/updated:', $this->site_data->site_url ) );
+			EE::success( sprintf( 'Auth successfully updated for `%s` scope. New values added:', $this->site_data->site_url ) );
 			EE::line( 'User: ' . $user );
 			EE::line( 'Pass: ' . $pass );
 		} else {
