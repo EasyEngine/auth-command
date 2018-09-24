@@ -200,7 +200,10 @@ class Auth_Command extends EE_Command {
 			}
 
 			$sites = array_unique(
-				array_column( Auth::all( [ 'site_url' ] ), 'site_url' )
+				array_column(
+					Auth::all( [ 'site_url' ] ),
+					'site_url'
+				)
 			);
 
 			foreach ( $sites as $site ) {
@@ -245,7 +248,8 @@ class Auth_Command extends EE_Command {
 
 		$sites = array_unique(
 			array_column(
-				Whitelist::all( [ 'site_url' ], 'site_url' )
+				Whitelist::all( [ 'site_url' ] ),
+				'site_url'
 			)
 		);
 
