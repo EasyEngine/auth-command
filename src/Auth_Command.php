@@ -76,12 +76,12 @@ class Auth_Command extends EE_Command {
 		verify_htpasswd_is_present();
 
 		$global   = $this->populate_info( $args, __FUNCTION__ );
-		$ip       = $assoc_args['ip'] ?? false;
+		$ip       = \EE\Utils\get_flag_value( $assoc_args, 'ip' );
 		$site_url = $global ? 'default' : $this->site_data->site_url;
 
 		if ( ! $ip ) {
-			$user      = $assoc_args['user'] ?? 'ee-' . EE\Utils\random_password( 6 );
-			$pass      = $assoc_args['pass'] ?? EE\Utils\random_password();
+			$user      = \EE\Utils\get_flag_value( $assoc_args, 'user', ( $global ? 'easyengine' : 'ee-' . EE\Utils\random_password( 6 ) ) );
+			$pass      = \EE\Utils\get_flag_value( $assoc_args, 'pass', EE\Utils\random_password() );
 			$auth_data = [
 				'site_url' => $site_url,
 				'username' => $user,
@@ -567,7 +567,7 @@ class Auth_Command extends EE_Command {
 		$global   = $this->populate_info( $args, __FUNCTION__ );
 		$site_url = $global ? 'default' : $this->site_data->site_url;
 		$auths    = $this->get_auths( $site_url, false );
-
+		$format   = \EE\Utils\get_flag_value( $assoc_args, 'format' );
 		$users = [];
 
 		foreach ( $auths as $auth ) {
@@ -579,5 +579,13 @@ class Auth_Command extends EE_Command {
 
 		$formatter = new EE\Formatter( $assoc_args, [ 'username', 'password' ] );
 		$formatter->display_items( $users );
+
+		if ( 'default' === $site_url && 'table' === $format ) {
+			if ( ! empty( Auth::get_global_admin_tools_auth() ) ) {
+				EE::log( 'This auth is applied only on admin-tools' );
+			} elseif ( ! empty( Auth::get_global_auths() ) ) {
+				EE::log( 'This auth is applied on all sites' );
+			}
+		}
 	}
 }
