@@ -200,13 +200,11 @@ class Auth_Command extends EE_Command {
 			}
 
 			$sites = array_unique(
-				array_column(
-					Auth::all( [ 'site_url' ], 'site_url' )
-				)
+				array_column( Auth::all( [ 'site_url' ] ), 'site_url' )
 			);
 
 			foreach ( $sites as $site ) {
-				$this->generate_site_auth_files( $site->site_url );
+				$this->generate_site_auth_files( $site );
 			}
 		}
 	}
