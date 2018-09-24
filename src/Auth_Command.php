@@ -538,6 +538,9 @@ class Auth_Command extends EE_Command {
 	 * [<site-name>]
 	 * : Name of website / `global` for global scope.
 	 *
+	 * [--ip]
+	 * : Show whitelisted IPs of site.
+	 *
 	 * [--format=<format>]
 	 * : Render output in a particular format.
 	 * ---
@@ -563,26 +566,28 @@ class Auth_Command extends EE_Command {
 
 		$global   = $this->populate_info( $args, __FUNCTION__ );
 		$site_url = $global ? 'default' : $this->site_data->site_url;
-		$auths    = $this->get_auths( $site_url, false );
-		$format   = \EE\Utils\get_flag_value( $assoc_args, 'format' );
-		$users = [];
+		$ip       = \EE\Utils\get_flag_value( $assoc_args, 'ip' );
 
-		foreach ( $auths as $auth ) {
-			$users[] = [
-				'username' => $auth->username,
-				'password' => $auth->password,
-			];
-		}
+		if ( ! $ip ) {
+			$auths  = $this->get_auths( $site_url, false );
+			$format = \EE\Utils\get_flag_value( $assoc_args, 'format' );
 
-		$formatter = new EE\Formatter( $assoc_args, [ 'username', 'password' ] );
-		$formatter->display_items( $users );
+			$formatter = new EE\Formatter( $assoc_args, [ 'username', 'password' ] );
+			$formatter->display_items( $auths );
 
-		if ( 'default' === $site_url && 'table' === $format ) {
-			if ( ! empty( Auth::get_global_admin_tools_auth() ) ) {
-				EE::log( 'This auth is applied only on admin-tools' );
-			} elseif ( ! empty( Auth::get_global_auths() ) ) {
-				EE::log( 'This auth is applied on all sites' );
+			if ( 'default' === $site_url && 'table' === $format ) {
+				if ( ! empty( Auth::get_global_admin_tools_auth() ) ) {
+					EE::log( 'This auth is applied only on admin-tools' );
+				} elseif ( ! empty( Auth::get_global_auths() ) ) {
+					EE::log( 'This auth is applied on all sites' );
+				}
 			}
+		} else {
+			$whitelists = Whitelist::where( 'site_url', $site_url );
+
+			$formatter = new EE\Formatter( $assoc_args, [ 'ip' ] );
+			$formatter->display_items( $whitelists );
+
 		}
 	}
 }
