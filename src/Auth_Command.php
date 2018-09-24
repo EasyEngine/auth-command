@@ -103,7 +103,7 @@ class Auth_Command extends EE_Command {
 		if ( 'site' === $scope || 'all' === $scope ) {
 			$site_auth_file_name = $site_url;
 			Auth::create( $auth_data );
-			$params = $this->fs->exists( EE_CONF_ROOT . '/nginx/htpasswd/' . $site_auth_file_name ) ? 'b' : 'bc';
+			$params = $this->fs->exists( EE_ROOT_DIR . '/nginx/htpasswd/' . $site_auth_file_name ) ? 'b' : 'bc';
 			EE::exec( sprintf( 'docker exec %s htpasswd -%s /etc/nginx/htpasswd/%s %s %s', EE_PROXY_TYPE, $params, $site_auth_file_name, $user, $pass ) );
 		}
 
@@ -111,7 +111,7 @@ class Auth_Command extends EE_Command {
 			$site_auth_file_name = $site_url . '_admin_tools';
 			$auth_data['scope']  = 'admin-tools';
 			Auth::create( $auth_data );
-			$params = $this->fs->exists( EE_CONF_ROOT . '/nginx/htpasswd/' . $site_auth_file_name ) ? 'b' : 'bc';
+			$params = $this->fs->exists( EE_ROOT_DIR . '/nginx/htpasswd/' . $site_auth_file_name ) ? 'b' : 'bc';
 			EE::exec( sprintf( 'docker exec %s htpasswd -%s /etc/nginx/htpasswd/%s %s %s', EE_PROXY_TYPE, $params, $site_auth_file_name, $user, $pass ) );
 		}
 
@@ -238,7 +238,7 @@ class Auth_Command extends EE_Command {
 			$auth->delete();
 			$site_auth_file_name = ( 'admin-tools' === $auth->scope ) ? $site_url . '_admin_tools' : $site_url;
 			EE::exec( sprintf( 'docker exec %s htpasswd -D /etc/nginx/htpasswd/%s %s', EE_PROXY_TYPE, $site_auth_file_name, $auth->username ) );
-			$file = EE_CONF_ROOT . '/nginx/htpasswd/' . $site_auth_file_name;
+			$file = EE_ROOT_DIR . '/nginx/htpasswd/' . $site_auth_file_name;
 			if ( empty( trim( file_get_contents( $file ) ) ) ) {
 				$this->fs->remove( $file );
 			}
@@ -368,7 +368,7 @@ class Auth_Command extends EE_Command {
 
 		$ip = EE\Utils\get_flag_value( $assoc_args, 'ip' );
 
-		$file         = EE_CONF_ROOT . '/nginx/vhost.d/';
+		$file         = EE_ROOT_DIR . '/nginx/vhost.d/';
 		$file         .= $global ? 'default_acl' : $this->site_data->site_url . '_acl';
 		$user_ips     = array_filter( explode( ',', $ip ), 'strlen' );
 		$existing_ips = $this->get_ips_from_file( $global );
@@ -465,7 +465,7 @@ class Auth_Command extends EE_Command {
 	 */
 	private function get_ips_from_file( $global ) {
 
-		$file         = EE_CONF_ROOT . '/nginx/vhost.d/';
+		$file         = EE_ROOT_DIR . '/nginx/vhost.d/';
 		$file         .= $global ? 'default_acl' : $this->site_data->site_url . '_acl';
 		$existing_ips = [];
 		if ( $this->fs->exists( $file ) ) {
