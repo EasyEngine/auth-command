@@ -333,16 +333,16 @@ class Auth_Command extends EE_Command {
 
 		$global   = $this->populate_info( $args, __FUNCTION__ );
 		$site_url = $global ? 'default' : $this->site_data->site_url;
-		$ip       = $assoc_args['ip'] ?? false;
+		$ip       = EE\Utils\get_flag_value( $assoc_args, 'ip' );
 
 		if ( ! $ip ) {
-			$user = $assoc_args['user'] ?? false;
+			$user = EE\Utils\get_flag_value( $assoc_args, 'user');
 
 			if ( ! $user ) {
 				EE::error( 'Please provide auth user with --user flag' );
 			}
 
-			$pass = $assoc_args['pass'] ?? EE\Utils\random_password();
+			$pass = EE\Utils\get_flag_value( $assoc_args, 'pass', EE\Utils\random_password() );
 
 			$auths = $this->get_auths( $site_url, $user );
 
@@ -459,10 +459,10 @@ class Auth_Command extends EE_Command {
 
 		$global   = $this->populate_info( $args, __FUNCTION__ );
 		$site_url = $global ? 'default' : $this->site_data->site_url;
-		$ip       = $assoc_args['ip'] ?? false;
+		$ip       = EE\Utils\get_flag_value( $assoc_args, 'ip' );
 
 		if ( ! $ip ) {
-			$user  = $assoc_args['user'] ?? false;
+			$user = EE\Utils\get_flag_value( $assoc_args, 'user' );
 			$auths = $this->get_auths( $site_url, $user );
 
 			foreach ( $auths as $auth ) {
