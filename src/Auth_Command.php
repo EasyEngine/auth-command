@@ -15,6 +15,7 @@
  */
 
 use EE\Model\Auth;
+use EE\Model\Whitelist;
 use Symfony\Component\Filesystem\Filesystem;
 use function EE\Auth\Utils\verify_htpasswd_is_present;
 use function EE\Site\Utils\auto_site_name;
@@ -52,27 +53,21 @@ class Auth_Command extends EE_Command {
 	 * [--pass=<pass>]
 	 * : Password for http auth.
 	 *
-	 * [--site]
-	 * : Create auth on site.
-	 *
-	 * [--admin-tools]
-	 * : Create auth on admin tools.
+	 * [--ip=<ip>]
+	 * : IP to whitelist.
 	 *
 	 * ## EXAMPLES
 	 *
-	 *     # Add auth on site and its admin tools with default username(easyengine) and random password
+	 *     # Add auth on site with default username(easyengine) and random password
 	 *     $ ee auth create example.com
 	 *
-	 *     # Add auth on all sites and its admin tools with default username and random password
+	 *     # Add auth on all sites with default username and random password
 	 *     $ ee auth create global
 	 *
-	 *     # Add auth on site and its admin tools with predefined username and password
+	 *     # Add auth on site with predefined username and password
 	 *     $ ee auth create example.com --user=test --pass=password
 	 *
-	 *     # Add auth only on admin tools
-	 *     $ ee auth create example.com --admin-tools
-	 *
-	 *     # Add auth on site and its admin tools with default username and random password
+	 *     # Add auth on site with default username and random password
 	 *     $ ee auth create example.com --pass=password
 	 *
 	 */
@@ -80,47 +75,256 @@ class Auth_Command extends EE_Command {
 
 		verify_htpasswd_is_present();
 
-		$global = $this->populate_info( $args, __FUNCTION__ );
-		$scope  = $this->get_scope( $assoc_args );
-
-		$user = EE\Utils\get_flag_value( $assoc_args, 'user', 'easyengine' );
-		$pass = EE\Utils\get_flag_value( $assoc_args, 'pass', EE\Utils\random_password() );
-
+		$global   = $this->populate_info( $args, __FUNCTION__ );
+		$ips      = \EE\Utils\get_flag_value( $assoc_args, 'ip' );
 		$site_url = $global ? 'default' : $this->site_data->site_url;
 
-		if ( ! empty( $this->get_auths( $site_url, $scope, $user, false ) ) ) {
-			$site_url = ( 'default' === $site_url ) ? 'global' : $site_url;
-			EE::error( "Auth with username $user already exists on $site_url for --$scope." );
+		if ( $ips ) {
+			$this->create_whitelist( $site_url, $ips );
+		} else {
+			$this->create_auth( $assoc_args, $global, $site_url );
 		}
+	}
 
+	/**
+	 * Creates http auth
+	 *
+	 * @param array  $assoc_args Assoc args passed to command
+	 * @param bool   $global     Enable auth on global
+	 * @param string $site_url   URL of site
+	 *
+	 * @throws Exception
+	 */
+	private function create_auth( array $assoc_args, bool $global, string $site_url ) {
+		$user      = \EE\Utils\get_flag_value( $assoc_args, 'user', ( $global ? 'easyengine' : 'ee-' . EE\Utils\random_password( 6 ) ) );
+		$pass      = \EE\Utils\get_flag_value( $assoc_args, 'pass', EE\Utils\random_password() );
 		$auth_data = [
 			'site_url' => $site_url,
 			'username' => $user,
 			'password' => $pass,
-			'scope'    => 'site',
 		];
 
-		if ( 'site' === $scope || 'all' === $scope ) {
-			$site_auth_file_name = $site_url;
-			Auth::create( $auth_data );
-			$params = $this->fs->exists( EE_ROOT_DIR . '/nginx/htpasswd/' . $site_auth_file_name ) ? 'b' : 'bc';
-			EE::exec( sprintf( 'docker exec %s htpasswd -%s /etc/nginx/htpasswd/%s %s %s', EE_PROXY_TYPE, $params, $site_auth_file_name, $user, $pass ) );
+		$query_conditions = [
+			'site_url' => $site_url,
+		];
+		$error_message    = sprintf( 'Auth already exists on %s. To update it, use `ee auth update`', 'default' === $site_url ? 'global scope' : $site_url );
+
+		if ( isset( $assoc_args['user'] ) ) {
+			$query_conditions['username'] = $user;
+			$error_message                = "Auth for user $user already exists for this site";
 		}
 
-		if ( 'admin-tools' === $scope || 'all' === $scope ) {
-			$site_auth_file_name = $site_url . '_admin_tools';
-			$auth_data['scope']  = 'admin-tools';
+		$existing_auths = Auth::where( $query_conditions );
+
+		if ( ! empty( $existing_auths ) ) {
+			EE::error( $error_message );
+		}
+
+		$admin_tools_auth = Auth::get_global_admin_tools_auth();
+		if ( 'default' === $site_url && ! empty( $admin_tools_auth ) ) {
+			$admin_tools_auth[0]->site_url = 'default';
+			$admin_tools_auth[0]->save();
+		} else {
 			Auth::create( $auth_data );
-			$params = $this->fs->exists( EE_ROOT_DIR . '/nginx/htpasswd/' . $site_auth_file_name ) ? 'b' : 'bc';
-			EE::exec( sprintf( 'docker exec %s htpasswd -%s /etc/nginx/htpasswd/%s %s %s', EE_PROXY_TYPE, $params, $site_auth_file_name, $user, $pass ) );
+		}
+
+		if ( 'default' === $site_url ) {
+			$this->generate_global_auth_files();
+		} else {
+			$this->generate_site_auth_files( $site_url );
 		}
 
 		EE::log( 'Reloading global reverse proxy.' );
 		reload_global_nginx_proxy();
 
-		EE::success( sprintf( 'Auth successfully updated for `%s` scope. New values added/updated:', $this->site_data->site_url ) );
+		EE::success( sprintf( 'Auth successfully updated for `%s` scope. New values added:', $this->site_data->site_url ) );
 		EE::line( 'User: ' . $user );
 		EE::line( 'Pass: ' . $pass );
+
+	}
+
+	/**
+	 * Creates http auth whitelist
+	 *
+	 * @param string $site_url URL of site
+	 * @param string $ips      IPs to whitelist
+	 *
+	 * @throws Exception
+	 */
+	private function create_whitelist( string $site_url, string $ips ) {
+		// TODO: Validate IPs
+		$user_ips = array_filter( explode( ',', $ips ), 'strlen' );      // Remove empty IPs
+
+		if ( Whitelist::has_ips( $site_url ) ) {
+			EE::error( "Whitelist is already created on $site_url. To update IPs use `ee auth update` instead" );
+		}
+
+		foreach ( $user_ips as $ip ) {
+			Whitelist::create(
+				[
+					'site_url' => $site_url,
+					'ip'       => $ip,
+				]
+			);
+		}
+
+		if ( 'default' === $site_url ) {
+			$this->generate_global_whitelist();
+		} else {
+			$this->generate_site_whitelist( $site_url );
+		}
+
+		reload_global_nginx_proxy();
+	}
+
+	/**
+	 * Function to populate basic info from args
+	 *
+	 * @param array  $args    args passed from function.
+	 * @param string $command command name that is calling the function.
+	 *
+	 * @return bool $global Whether the command is global or site-specific.
+	 */
+	private function populate_info( $args, $command ) {
+
+		$global = false;
+		if ( isset( $args[0] ) && 'global' === $args[0] ) {
+			$this->site_data = (object) [ 'site_url' => $args[0] ];
+			$global          = true;
+		} else {
+			$args            = auto_site_name( $args, 'auth', $command );
+			$this->site_data = get_site_info( $args, true, true, false );
+		}
+
+		return $global;
+	}
+
+	/**
+	 * Generates auth files for global auth and all sites
+	 *
+	 * @throws Exception
+	 */
+	private function generate_global_auth_files() {
+
+		$global_admin_tools_auth = Auth::get_global_admin_tools_auth();
+
+		if ( ! empty( $global_admin_tools_auth ) ) {
+			EE::exec( sprintf( 'docker exec %s htpasswd -bc /etc/nginx/htpasswd/default_admin_tools %s %s', EE_PROXY_TYPE, $global_admin_tools_auth->username, $global_admin_tools_auth->password ) );
+		} else {
+			$this->fs->remove( EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/default_admin_tools' );
+			$this->fs->remove( EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/default' );
+			$auths = Auth::get_global_auths();
+
+			foreach ( $auths as $key => $auth ) {
+				$flags = 'b';
+
+				if ( 0 === $key ) {
+					$flags = 'bc';
+				}
+
+				EE::exec( sprintf( 'docker exec %s htpasswd -%s /etc/nginx/htpasswd/default %s %s', EE_PROXY_TYPE, $flags, $auth->username, $auth->password ) );
+			}
+
+			$sites = array_unique(
+				array_column(
+					Auth::all( [ 'site_url' ] ),
+					'site_url'
+				)
+			);
+
+			foreach ( $sites as $site ) {
+				$this->generate_site_auth_files( $site );
+			}
+		}
+	}
+
+	/**
+	 * Generates auth files for a site
+	 *
+	 * @param string $site_url URL of site
+	 *
+	 * @throws Exception
+	 */
+	private function generate_site_auth_files( string $site_url ) {
+		$site_auth_file = EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/' . $site_url;
+		$this->fs->remove( $site_auth_file );
+
+		$auths = array_merge(
+			Auth::get_global_auths(),
+			Auth::where( 'site_url', $site_url )
+		);
+
+		foreach ( $auths as $key => $auth ) {
+			$flags = 'b';
+
+			if ( $key === 0 ) {
+				$flags = 'bc';
+			}
+			EE::exec( sprintf( 'docker exec %s htpasswd -%s /etc/nginx/htpasswd/%s %s %s', EE_PROXY_TYPE, $flags, $site_url, $auth->username, $auth->password ) );
+		}
+	}
+
+	/**
+	 * Generates global whitelist file and regeneates all site files
+	 *
+	 * @throws Exception
+	 */
+	private function generate_global_whitelist() {
+		$this->generate_site_whitelist( 'default' );
+
+		$sites = array_unique(
+			array_column(
+				Whitelist::all( [ 'site_url' ] ),
+				'site_url'
+			)
+		);
+
+		foreach ( $sites as $site ) {
+			$this->generate_site_whitelist( $site->site_url );
+		}
+	}
+
+	/**
+	 * Generates site whitelist files
+	 *
+	 * @param string $site_url
+	 *
+	 * @throws Exception
+	 */
+	private function generate_site_whitelist( string $site_url ) {
+		$site_whitelist_file = EE_ROOT_DIR . '/services/nginx-proxy/vhost.d/' . $site_url . '_acl';
+		$this->fs->remove( $site_whitelist_file );
+
+		$whitelists = array_column(
+			'default' === $site_url ? Whitelist::get_global_ips() :
+				array_merge(
+					Whitelist::get_global_ips(),
+					Whitelist::where( 'site_url', $site_url )
+				),
+			'ip'
+		);
+
+		$this->put_ips_to_file( $site_whitelist_file, $whitelists );
+	}
+
+	/**
+	 * Function to put list of ip's into a file.
+	 *
+	 * @param string $file Path of file to write ip's in.
+	 * @param array  $ips  List of ip's.
+	 */
+	private function put_ips_to_file( string $file, array $ips ) {
+
+		if ( empty( $ips ) ) {
+			return;
+		}
+
+		$file_content = 'satisfy any;' . PHP_EOL;
+		foreach ( $ips as $ip ) {
+			$file_content .= "allow $ip;" . PHP_EOL;
+		}
+		$file_content .= 'deny all;';
+		$this->fs->dumpFile( $file, $file_content );
 	}
 
 	/**
@@ -129,7 +333,7 @@ class Auth_Command extends EE_Command {
 	 * ## OPTIONS
 	 *
 	 * [<site-name>]
-	 * : Name of website / `global` for global scope.
+	 * : Name of website / `global` for global auth.
 	 *
 	 * [--user=<user>]
 	 * : Username for http auth.
@@ -137,57 +341,140 @@ class Auth_Command extends EE_Command {
 	 * [--pass=<pass>]
 	 * : Password for http auth.
 	 *
-	 * [--site]
-	 * : Update auth on site.
-	 *
-	 * [--admin-tools]
-	 * : Update auth on admin tools.
+	 * [--ip=<ip>]
+	 * : IP to whitelist.
 	 *
 	 * ## EXAMPLES
 	 *
-	 *     # Update auth password on site and its admin tools with default username(easyengine) and random password
-	 *     $ ee auth update example.com
+	 *     # Update auth password on global auth with default username and random password
+	 *     $ ee auth update global --user=easyengine
 	 *
-	 *     # Update auth password on all sites and its admin tools with default username and random password
-	 *     $ ee auth update global
-	 *
-	 *     # Update auth password on site and its admin tools with predefined username and password
+	 *     # Update auth password on site with predefined username and password
 	 *     $ ee auth update example.com --user=test --pass=password
-	 *
-	 *     # Update auth password only on admin tools
-	 *     $ ee auth update example.com --admin-tools
-	 *
-	 *     # Update auth password on site and its admin tools with default username and random password
-	 *     $ ee auth update example.com --pass=password
 	 *
 	 */
 	public function update( $args, $assoc_args ) {
 
 		verify_htpasswd_is_present();
 
-		$scope  = $this->get_scope( $assoc_args );
-		$global = $this->populate_info( $args, __FUNCTION__ );
+		$global   = $this->populate_info( $args, __FUNCTION__ );
+		$site_url = $global ? 'default' : $this->site_data->site_url;
+		$ips       = EE\Utils\get_flag_value( $assoc_args, 'ip' );
 
-		$user = EE\Utils\get_flag_value( $assoc_args, 'user', 'easyengine' );
+		if ( $ips ) {
+			$this->update_whitelist( $site_url, $ips );
+		} else {
+			$this->update_auth( $assoc_args, $site_url );
+		}
+	}
+
+	/**
+	 * Update whitelist IPs
+	 *
+	 * @param array  $assoc_args
+	 * @param string $site_url
+	 */
+	public function update_auth( array $assoc_args, string $site_url ) {
+		$user = EE\Utils\get_flag_value( $assoc_args, 'user' );
+
+		if ( ! $user ) {
+			EE::error( 'Please provide auth user with --user flag' );
+		}
+
 		$pass = EE\Utils\get_flag_value( $assoc_args, 'pass', EE\Utils\random_password() );
 
-		$site_url = $global ? 'default' : $this->site_data->site_url;
-		$auths    = $this->get_auths( $site_url, $scope, $user );
+		$auths = $this->get_auths( $site_url, $user );
 
 		foreach ( $auths as $auth ) {
-			$auth->update( [
-				'password' => $pass,
-			] );
-			$site_auth_file_name = ( 'admin-tools' === $auth->scope ) ? $site_url . '_admin_tools' : $site_url;
-			EE::exec( sprintf( 'docker exec %s htpasswd -b /etc/nginx/htpasswd/%s %s %s', EE_PROXY_TYPE, $site_auth_file_name, $user, $pass ) );
+			$auth->password = $pass;
+			$auth->save();
+		}
+
+		if ( 'default' === $site_url ) {
+			$this->generate_global_auth_files();
+		} else {
+			$this->generate_site_auth_files( $site_url );
 		}
 
 		EE::log( 'Reloading global reverse proxy.' );
 		reload_global_nginx_proxy();
 
-		EE::success( sprintf( 'Auth successfully updated for `%s` scope. New values added/updated:', $this->site_data->site_url ) );
+		EE::success( sprintf( 'Auth successfully updated for `%s` scope. New values added:', $this->site_data->site_url ) );
 		EE::line( 'User: ' . $user );
 		EE::line( 'Pass: ' . $pass );
+	}
+
+	/**
+	 * Update whitelist IPs
+	 *
+	 * @param string $site_url
+	 * @param string $ips
+	 *
+	 * @throws Exception
+	 */
+	public function update_whitelist( string $site_url, string $ips ) {
+		// TODO: Validate IPs
+		$user_ips = array_filter( explode( ',', $ips ), 'strlen' );      // Remove empty IPs
+
+		foreach ( $user_ips as $ip ) {
+			$existing_ips = Whitelist::where(
+				[
+					'site_url' => $site_url,
+					'ip'       => $ip,
+				]
+			);
+
+			if ( ! empty( $existing_ips ) ) {
+				EE::log( $existing_ips[0]->ip . " has already been whitelisted on $site_url. Skipping it." );
+				continue;
+			}
+
+			Whitelist::create(
+				[
+					'site_url' => $site_url,
+					'ip'       => $ip,
+				]
+			);
+		}
+
+		if ( 'default' === $site_url ) {
+			$this->generate_global_whitelist();
+		} else {
+			$this->generate_site_whitelist( $site_url );
+		}
+
+		reload_global_nginx_proxy();
+
+	}
+
+	/**
+	 * Gets all the authentication objects from db.
+	 *
+	 * @param string $site_url       Site URL.
+	 * @param string $user           User for which the auth need to be fetched.
+	 * @param bool   $error_if_empty Exit if auth is not present
+	 *
+	 * @return array Array of auth models.
+	 * @throws Exception
+	 */
+	private function get_auths( $site_url, $user, $error_if_empty = true ) {
+
+		$where_conditions = [ 'site_url' => $site_url ];
+
+		$user_error_msg = '';
+		if ( $user ) {
+			$where_conditions['username'] = $user;
+			$user_error_msg               = ' with username: ' . $user;
+		}
+
+		$auths = Auth::where( $where_conditions );
+
+		if ( empty( $auths ) && $error_if_empty ) {
+			$site = ( 'default' === $site_url ) ? 'global' : $site_url;
+			EE::error( sprintf( 'Auth%s does not exists on %s', $user_error_msg, $site ) );
+		}
+
+		return $auths;
 	}
 
 	/**
@@ -201,11 +488,8 @@ class Auth_Command extends EE_Command {
 	 * [--user=<user>]
 	 * : Username that needs to be deleted.
 	 *
-	 * [--site]
-	 * : Delete auth on site.
-	 *
-	 * [--admin-tools]
-	 * : Delete auth for admin tools.
+	 * [--ip=<ip>]
+	 * : IP to whitelist.
 	 *
 	 * ## EXAMPLES
 	 *
@@ -214,9 +498,6 @@ class Auth_Command extends EE_Command {
 	 *
 	 *     # Remove auth on site and its admin tools with custom username
 	 *     $ ee auth delete example.com --user=example
-	 *
-	 *     # Remove global auth on all site's admin tools with default username(easyengine)
-	 *     $ ee auth delete example.com --admin-tools
 	 *
 	 *     # Remove global auth on all sites (but not admin tools) with default username(easyengine)
 	 *     $ ee auth delete example.com --site
@@ -228,25 +509,75 @@ class Auth_Command extends EE_Command {
 
 		$global   = $this->populate_info( $args, __FUNCTION__ );
 		$site_url = $global ? 'default' : $this->site_data->site_url;
-		$user     = EE\Utils\get_flag_value( $assoc_args, 'user' );
-		$scope    = $this->get_scope( $assoc_args );
-		$auths    = $this->get_auths( $site_url, $scope, $user );
+		$ip       = EE\Utils\get_flag_value( $assoc_args, 'ip' );
 
-		foreach ( $auths as $auth ) {
-			$username   = $auth->username;
-			$User_scope = $auth->scope;
-			$auth->delete();
-			$site_auth_file_name = ( 'admin-tools' === $auth->scope ) ? $site_url . '_admin_tools' : $site_url;
-			EE::exec( sprintf( 'docker exec %s htpasswd -D /etc/nginx/htpasswd/%s %s', EE_PROXY_TYPE, $site_auth_file_name, $auth->username ) );
-			$file = EE_ROOT_DIR . '/nginx/htpasswd/' . $site_auth_file_name;
-			if ( empty( trim( file_get_contents( $file ) ) ) ) {
-				$this->fs->remove( $file );
+		if ( ! $ip ) {
+			$user = EE\Utils\get_flag_value( $assoc_args, 'user' );
+			$auths = $this->get_auths( $site_url, $user );
+
+			foreach ( $auths as $auth ) {
+				$auth->delete();
 			}
-			EE::success( sprintf( 'http auth successfully removed of user: %s for %s.', $username, $User_scope ) );
-		}
 
-		EE::log( 'Reloading global reverse proxy.' );
-		reload_global_nginx_proxy();
+			if ( 'default' === $site_url ) {
+				$this->generate_global_auth_files();
+			} else {
+				$this->generate_site_auth_files( $site_url );
+			}
+
+			if ( $user ) {
+				$success_message = sprintf( 'http auth successfully removed on %s.', $site_url );
+			} else {
+				$success_message = sprintf( 'http auth successfully removed on %s on %s user', $site_url, $user );
+			}
+
+			EE::success( $success_message );
+			EE::log( 'Reloading global reverse proxy.' );
+			reload_global_nginx_proxy();
+		} else {
+
+			if ( 'all' === $ip ) {
+				$whitelists = Whitelist::where( [ 'site_url' => $site_url ] );
+
+				foreach ( $whitelists as $whitelist ) {
+					$whitelist->delete();
+				}
+			} else {
+				// TODO: Validate IPs
+				$user_ips = array_filter( explode( ',', $ip ), 'strlen' );      // Remove empty IPs
+
+				foreach ( $user_ips as $ip ) {
+					$existing_ips = Whitelist::where(
+						[
+							'site_url' => $site_url,
+							'ip'       => $ip,
+						]
+					);
+
+					if ( empty( $existing_ips ) ) {
+						EE::log( $ip . " has not been whitelisted on $site_url. Skipping it." );
+						continue;
+					}
+
+					$whitelist = Whitelist::where(
+						[
+							'site_url' => $site_url,
+							'ip'       => $ip,
+						]
+					);
+
+					$whitelist[0]->delete();
+				}
+			}
+
+			if ( 'default' === $site_url ) {
+				$this->generate_global_whitelist();
+			} else {
+				$this->generate_site_whitelist( $site_url );
+			}
+
+			reload_global_nginx_proxy();
+		}
 	}
 
 	/**
@@ -257,11 +588,8 @@ class Auth_Command extends EE_Command {
 	 * [<site-name>]
 	 * : Name of website / `global` for global scope.
 	 *
-	 * [--site]
-	 * : List auth on site.
-	 *
-	 * [--admin-tools]
-	 * : List auth for admin-tools.
+	 * [--ip]
+	 * : Show whitelisted IPs of site.
 	 *
 	 * [--format=<format>]
 	 * : Render output in a particular format.
@@ -287,290 +615,28 @@ class Auth_Command extends EE_Command {
 	public function list( $args, $assoc_args ) {
 
 		$global   = $this->populate_info( $args, __FUNCTION__ );
-		$scope    = $this->get_scope( $assoc_args );
 		$site_url = $global ? 'default' : $this->site_data->site_url;
-		$auths    = $this->get_auths( $site_url, $scope, false );
+		$ip       = \EE\Utils\get_flag_value( $assoc_args, 'ip' );
 
-		$users = [];
+		if ( $ip ) {
+			$whitelists = Whitelist::where( 'site_url', $site_url );
 
-		foreach ( $auths as $auth ) {
-			if ( 'all' === $scope || $scope === $auth->scope ) {
-				$users[] = [
-					'username' => $auth->username,
-					'password' => $auth->password,
-					'scope'    => $auth->scope,
-				];
-			}
-		}
-
-		$formatter = new EE\Formatter( $assoc_args, [ 'username', 'password', 'scope' ] );
-		$formatter->display_items( $users );
-	}
-
-	/**
-	 * Create, append, remove, list ip whitelisting for a site or globally.
-	 *
-	 * ## OPTIONS
-	 *
-	 * [<create>]
-	 * : Create ip whitelisting for a site or globally.
-	 *
-	 * [<append>]
-	 * : Append ips in whitelisting of a site or globally.
-	 *
-	 * [<list>]
-	 * : List whitelisted ip's of a site or of global scope.
-	 *
-	 * [<remove>]
-	 * : Remove whitelisted ip's of a site or of global scope.
-	 *
-	 * [<site-name>]
-	 * : Name of website / `global` for global scope.
-	 *
-	 * [--ip=<ip>]
-	 * : Comma seperated ips.
-	 *
-	 * ## EXAMPLES
-	 *
-	 *     # Whitelisted IP on site
-	 *     $ ee auth whitelist create example.com --ip=127.0.0.1,192.168.0.1
-	 *
-	 *     # Whitelist IP on site where previous whitelisting are present
-	 *     $ ee auth whitelist append example.com --ip=127.0.0.1
-	 *
-	 *     # List all whitelisted ips on site
-	 *     $ ee auth whitelist list example.com
-	 *
-	 *     # Remove a whitelisted IP on site
-	 *     $ ee auth whitelist remove example.com --ip=127.0.0.1
-	 *
-	 *     # Remove all whitelisted IPs on site
-	 *     $ ee auth whitelist remove example.com --ip=all
-	 *
-	 *     # Above all will work for global auth by replacing site name with global
-	 *
-	 */
-	public function whitelist( $args, $assoc_args ) {
-
-		// Note: If new sub-commands for whitelisting is added, function for it and this variable needs to be updated.
-		$commands = [ 'create', 'append', 'list', 'remove' ];
-		if ( ! ( isset( $args[0] ) && in_array( $args[0], $commands ) ) ) {
-			$help = PHP_EOL;
-			foreach ( $commands as $command ) {
-				$help .= "ee auth whitelist $command [<site-name>/global] [--ip=<ip>]" . PHP_EOL;
-			}
-			EE::error( 'Please use valid command syntax. You can use:' . $help );
-
-		}
-
-		$command = array_shift( $args );
-		$global  = $this->populate_info( $args, __FUNCTION__ . ' ' . $command );
-
-		$ip = EE\Utils\get_flag_value( $assoc_args, 'ip' );
-
-		$file         = EE_ROOT_DIR . '/nginx/vhost.d/';
-		$file         .= $global ? 'default_acl' : $this->site_data->site_url . '_acl';
-		$user_ips     = array_filter( explode( ',', $ip ), 'strlen' );
-		$existing_ips = $this->get_ips_from_file( $global );
-
-		call_user_func_array( [ $this, "whitelist_$command" ], [ $file, $user_ips, $existing_ips ] );
-
-		reload_global_nginx_proxy();
-	}
-
-	/**
-	 * Function to create whitelist file.
-	 *
-	 * @param string $file        The whitelisting file.
-	 * @param array $user_ips     ip's provided by the user.
-	 * @param array $existing_ips Existing ip's in the given file.
-	 */
-	private function whitelist_create( $file, $user_ips, $existing_ips ) {
-
-		$this->put_ips_to_file( $file, $user_ips );
-		EE::success( sprintf( 'Created whitelist for `%s` scope with %s IP\'s.', $this->site_data->site_url, implode( ',', $user_ips ) ) );
-	}
-
-	/**
-	 * Function to append to whitelist file.
-	 *
-	 * @param string $file        The whitelisting file.
-	 * @param array $user_ips     ip's provided by the user.
-	 * @param array $existing_ips Existing ip's in the given file.
-	 */
-	private function whitelist_append( $file, $user_ips, $existing_ips ) {
-
-		$all_ips = array_unique( array_merge( $user_ips, $existing_ips ) );
-		$this->put_ips_to_file( $file, $all_ips );
-		EE::success( sprintf( 'Appended %s IP\'s to whitelist of `%s` scope', implode( ',', $user_ips ), $this->site_data->site_url ) );
-	}
-
-	/**
-	 * Function to list whitelisted ips.
-	 *
-	 * @param string $file         The whitelisting file.
-	 * @param array  $user_ips     ip's provided by the user.
-	 * @param array  $existing_ips Existing ip's in the given file.
-	 *
-	 * @throws \EE\ExitException
-	 */
-	private function whitelist_list( $file, $user_ips, $existing_ips ) {
-
-		if ( empty( $existing_ips ) ) {
-			EE::error( sprintf( 'No Whitelisted IP\'s found for %s scope', $this->site_data->site_url ) );
-		}
-
-		EE::log( sprintf( 'Whitelisted IP\'s for %s scope', $this->site_data->site_url ) );
-		foreach ( $existing_ips as $ips ) {
-			EE::line( $ips );
-		}
-	}
-
-	/**
-	 * Function to remove whitelisted ips.
-	 *
-	 * @param string $file         The whitelisting file.
-	 * @param array  $user_ips     ip's provided by the user.
-	 * @param array  $existing_ips Existing ip's in the given file.
-	 *
-	 * @throws \EE\ExitException
-	 */
-	private function whitelist_remove( $file, $user_ips, $existing_ips ) {
-
-		if ( empty( $user_ips ) || 'all' === $user_ips[0] ) {
-			$this->fs->remove( $file );
+			$formatter = new EE\Formatter( $assoc_args, [ 'ip' ] );
+			$formatter->display_items( $whitelists );
 		} else {
-			$removed_ips  = array_intersect( $existing_ips, $user_ips );
-			$leftover_ips = array_diff( $user_ips, $removed_ips );
-			$updated_ips  = array_diff( $existing_ips, $user_ips );
-			$file_content = '';
-			foreach ( $updated_ips as $individual_ip ) {
-				$file_content .= "allow $individual_ip;" . PHP_EOL;
-			}
-			$this->fs->dumpFile( $file, $file_content );
-		}
-		if ( empty( $removed_ips ) ) {
-			EE::error( sprintf( '%s IP\'s not found in whitelist of `%s` scope', implode( ',', $user_ips ), $this->site_data->site_url ) );
-		}
-		EE::warning( sprintf( 'Could not find %s IP\'s from whitelist of `%s` scope', implode( ',', $leftover_ips ), $this->site_data->site_url ) );
-		EE::success( sprintf( 'Removed %s IP\'s from whitelist of `%s` scope', implode( ',', $removed_ips ), $this->site_data->site_url ) );
-	}
+			$auths  = $this->get_auths( $site_url, false );
+			$format = \EE\Utils\get_flag_value( $assoc_args, 'format' );
 
-	/**
-	 * Function to get the list of ip's from given file.
-	 *
-	 * @param boolean $global Is the scope global or site specific.
-	 *
-	 * @return array of existing ips.
-	 */
-	private function get_ips_from_file( $global ) {
+			$formatter = new EE\Formatter( $assoc_args, [ 'username', 'password' ] );
+			$formatter->display_items( $auths );
 
-		$file         = EE_ROOT_DIR . '/nginx/vhost.d/';
-		$file         .= $global ? 'default_acl' : $this->site_data->site_url . '_acl';
-		$existing_ips = [];
-		if ( $this->fs->exists( $file ) ) {
-			$existing_ips_in_file = array_slice( array_filter( explode( PHP_EOL, file_get_contents( $file ) ), 'trim' ), 1, - 1 );
-			foreach ( $existing_ips_in_file as $ip_in_file ) {
-				$existing_ips[] = str_replace( [ 'allow ', ';' ], '', trim( $ip_in_file ) );
+			if ( 'default' === $site_url && 'table' === $format ) {
+				if ( ! empty( Auth::get_global_admin_tools_auth() ) ) {
+					EE::log( 'This auth is applied only on admin-tools' );
+				} elseif ( ! empty( Auth::get_global_auths() ) ) {
+					EE::log( 'This auth is applied on all sites' );
+				}
 			}
 		}
-
-		return $existing_ips;
-	}
-
-	/**
-	 * Function to put list of ip's into a file.
-	 *
-	 * @param string $file Path of file to write ip's in.
-	 * @param array $ips   List of ip's.
-	 */
-	private function put_ips_to_file( $file, $ips ) {
-
-		$file_content = 'satisfy any;' . PHP_EOL;
-		foreach ( $ips as $ip ) {
-			$file_content .= "allow $ip;" . PHP_EOL;
-		}
-		$file_content .= 'deny all;';
-		$this->fs->dumpFile( $file, $file_content );
-	}
-
-	/**
-	 * Function to populate basic info from args
-	 *
-	 * @param array $args     args passed from function.
-	 * @param string $command command name that is calling the function.
-	 *
-	 * @return bool $global Whether the command is global or site-specific.
-	 */
-	private function populate_info( $args, $command ) {
-
-		$global = false;
-		if ( isset( $args[0] ) && 'global' === $args[0] ) {
-			$this->site_data = (object) [ 'site_url' => $args[0] ];
-			$global          = true;
-		} else {
-			$args            = auto_site_name( $args, 'auth', $command );
-			$this->site_data = get_site_info( $args, true, true, false );
-		}
-
-		return $global;
-	}
-
-	/**
-	 * Get the appropriate scope from passed associative arguments.
-	 *
-	 * @param array $assoc_args Passed associative arguments.
-	 *
-	 * @return string Found scope.
-	 */
-	private function get_scope( $assoc_args ) {
-
-		$scope_site        = $assoc_args['site'] ?? false;
-		$scope_admin_tools = $assoc_args['admin-tools'] ?? false;
-
-		if ( $scope_site && ! $scope_admin_tools ) {
-			return 'site';
-		}
-
-		if ( $scope_admin_tools && ! $scope_site ) {
-			return 'admin-tools';
-		}
-
-		return 'all';
-	}
-
-	/**
-	 * Gets all the authentication objects from db.
-	 *
-	 * @param string $site_url Site URL.
-	 * @param string $scope    The scope of auth.
-	 * @param string $user     User for which the auth need to be fetched.
-	 *
-	 * @throws \EE\ExitException
-	 * @return array Array of auth models.
-	 */
-	private function get_auths( $site_url, $scope, $user, $error_if_empty = true ) {
-
-		$where_conditions = [ 'site_url' => $site_url ];
-
-		$user_error_msg = '';
-		if ( $user ) {
-			$where_conditions['username'] = $user;
-			$user_error_msg               = ' with username: ' . $user;
-		}
-
-		if ( 'all' !== $scope ) {
-			$where_conditions['scope'] = $scope;
-		}
-
-		$auths = Auth::where( $where_conditions );
-
-		if ( empty( $auths ) && $error_if_empty ) {
-			$all_error_msg  = ( 'all' === $scope ) ? '' : 'for ' . $scope;
-			$site_error_msg = ( 'default' === $site_url ) ? 'global' : $site_url;
-			EE::error( sprintf( 'Auth%s does not exists on %s %s', $user_error_msg, $site_error_msg, $all_error_msg ) );
-		}
-
-		return $auths;
 	}
 }
