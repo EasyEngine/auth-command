@@ -211,8 +211,8 @@ class Auth_Command extends EE_Command {
 		if ( ! empty( $global_admin_tools_auth ) ) {
 			EE::exec( sprintf( 'docker exec %s htpasswd -bc /etc/nginx/htpasswd/default_admin_tools %s %s', EE_PROXY_TYPE, $global_admin_tools_auth->username, $global_admin_tools_auth->password ) );
 		} else {
-			$this->fs->remove( EE_CONF_ROOT . '/nginx/htpasswd/default_admin_tools' );
-			$this->fs->remove( EE_CONF_ROOT . '/nginx/htpasswd/default' );
+			$this->fs->remove( EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/default_admin_tools' );
+			$this->fs->remove( EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/default' );
 			$auths = Auth::get_global_auths();
 
 			foreach ( $auths as $key => $auth ) {
@@ -246,7 +246,7 @@ class Auth_Command extends EE_Command {
 	 * @throws Exception
 	 */
 	private function generate_site_auth_files( string $site_url ) {
-		$site_auth_file = EE_CONF_ROOT . '/nginx/htpasswd/' . $site_url;
+		$site_auth_file = EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/' . $site_url;
 		$this->fs->remove( $site_auth_file );
 
 		$auths = array_merge(
@@ -292,7 +292,7 @@ class Auth_Command extends EE_Command {
 	 * @throws Exception
 	 */
 	private function generate_site_whitelist( string $site_url ) {
-		$site_whitelist_file = EE_CONF_ROOT . '/nginx/vhost.d/' . $site_url . '_acl';
+		$site_whitelist_file = EE_ROOT_DIR . '/services/nginx-proxy/vhost.d/' . $site_url . '_acl';
 		$this->fs->remove( $site_whitelist_file );
 
 		$whitelists = array_column(
