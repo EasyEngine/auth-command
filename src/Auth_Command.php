@@ -124,9 +124,9 @@ class Auth_Command extends EE_Command {
 		if ( 'default' === $site_url && ! empty( $admin_tools_auth ) ) {
 			$admin_tools_auth[0]->site_url = 'default';
 			$admin_tools_auth[0]->save();
-		} else {
-			Auth::create( $auth_data );
 		}
+
+		Auth::create( $auth_data );
 
 		if ( 'default' === $site_url ) {
 			$this->generate_global_auth_files();
