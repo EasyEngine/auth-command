@@ -624,18 +624,31 @@ class Auth_Command extends EE_Command {
 			$formatter = new EE\Formatter( $assoc_args, [ 'ip' ] );
 			$formatter->display_items( $whitelists );
 		} else {
-			$auths  = $this->get_auths( $site_url, false );
-			$format = \EE\Utils\get_flag_value( $assoc_args, 'format' );
+			$log_msg = '';
+			if ( 'default' === $site_url ) {
+				$auths            = Auth::get_global_admin_tools_auth();
+				$admin_tools_auth = true;
+				if ( empty( $auths ) ) {
+					$auths            = Auth::get_global_auths();
+					$admin_tools_auth = false;
+				}
+
+				if ( empty( $auths ) ) {
+					EE::error( 'Auth does not exists on global.' );
+				}
+				$format = \EE\Utils\get_flag_value( $assoc_args, 'format' );
+				if ( 'table' === $format ) {
+					$log_msg = $admin_tools_auth ? 'This auth is applied only on admin-tools.' : '';
+				}
+
+			} else {
+				$auths = $this->get_auths( $site_url, false );
+			}
 
 			$formatter = new EE\Formatter( $assoc_args, [ 'username', 'password' ] );
 			$formatter->display_items( $auths );
-
-			if ( 'default' === $site_url && 'table' === $format ) {
-				if ( ! empty( Auth::get_global_admin_tools_auth() ) ) {
-					EE::log( 'This auth is applied only on admin-tools' );
-				} elseif ( ! empty( Auth::get_global_auths() ) ) {
-					EE::log( 'This auth is applied on all sites' );
-				}
+			if ( ! empty( $log_msg ) ) {
+				EE::log( $log_msg );
 			}
 		}
 	}
