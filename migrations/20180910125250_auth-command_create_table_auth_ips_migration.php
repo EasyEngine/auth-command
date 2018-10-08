@@ -4,7 +4,7 @@ namespace EE\Migration;
 use EE;
 use EE\Migration\Base;
 
-class CreateTableAuthUsersMigration extends Base {
+class CreateTableAuthIpsMigration extends Base {
 
 	private static $pdo;
 
@@ -26,11 +26,11 @@ class CreateTableAuthUsersMigration extends Base {
 	 */
 	public function up() {
 
-		$query = 'CREATE TABLE auth_users (
+		$query = 'CREATE TABLE auth_ips (
 			id INTEGER,
 			site_url VARCHAR NOT NULL,
-			username VARCHAR NOT NULL,
-			password VARCHAR NOT NULL,
+			ip       VARCHAR NOT NULL,
+			UNIQUE (site_url, ip),
 			PRIMARY KEY (id)
 		);';
 
@@ -48,7 +48,7 @@ class CreateTableAuthUsersMigration extends Base {
 	 */
 	public function down() {
 
-		$query  = 'DROP TABLE IF EXISTS auth_users;';
+		$query = 'DROP TABLE IF EXISTS auth_ips;';
 
 		try {
 			self::$pdo->exec( $query );
