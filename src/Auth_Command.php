@@ -278,10 +278,14 @@ class Auth_Command extends EE_Command {
 				'site_url'
 			)
 		);
+		if ( ( $key = array_search( 'default', $sites ) ) !== false ) {
+			unset( $sites[ $key ] );
+		}
 
 		foreach ( $sites as $site ) {
-			$this->generate_site_whitelist( $site->site_url );
+			$this->generate_site_whitelist( $site );
 		}
+
 	}
 
 	/**
