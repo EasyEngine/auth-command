@@ -14,7 +14,7 @@ use EE\Model\Auth;
  */
 function init_global_admin_tools_auth() {
 
-	if ( ! empty( Auth::get_global_admin_tools_auth() ) ) {
+	if ( ! empty( Auth::get_global_admin_tools_auth() ) || ! empty( Auth::get_global_auths() ) ) {
 		EE::log( 'Global auth exists on admin-tools. Use `ee auth list global` to view credentials.' );
 
 		return;
