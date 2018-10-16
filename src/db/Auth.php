@@ -130,8 +130,6 @@ class Auth extends Base {
 			'password' => $this->password,
 		];
 
-		self::validate( $columns );
-
 		return parent::save();
 	}
 }
