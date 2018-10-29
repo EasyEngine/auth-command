@@ -96,7 +96,7 @@ class Auth_Command extends EE_Command {
 	 * @throws Exception
 	 */
 	private function create_auth( array $assoc_args, bool $global, string $site_url ) {
-		$user      = \EE\Utils\get_flag_value( $assoc_args, 'user', ( $global ? 'easyengine' : 'ee-' . EE\Utils\random_password( 6 ) ) );
+		$user      = \EE\Utils\get_flag_value( $assoc_args, 'user', 'ee-' . EE\Utils\random_password( 6 ) );
 		$pass      = \EE\Utils\get_flag_value( $assoc_args, 'pass', EE\Utils\random_password() );
 		$auth_data = [
 			'site_url' => $site_url,
