@@ -200,7 +200,22 @@ class Auth_Command extends EE_Command {
 	}
 
 	/**
-	 * Generates auth files for global auth and all sites
+	 * Regenerate admin-tools auth if needed when global auth is deleted.
+	 * @throws Exception
+	 * @throws \EE\ExitException
+	 */
+	private function regen_admin_tools_auth() {
+		$admin_tools = \EE\Model\Site::where( 'admin_tools', '1' );
+		$mailhog     = \EE\Model\Site::where( 'mailhog_enabled', '1' );
+		if ( empty( $admin_tools ) && empty( $mailhog ) ) {
+			return;
+		}
+		EE::log( 'Creating new auth for admin-tools only.' );
+		\EE\Auth\Utils\init_global_admin_tools_auth();
+	}
+
+	/**
+	 * Generates auth files for global auth and all sites.
 	 *
 	 * @throws Exception
 	 */
@@ -215,14 +230,18 @@ class Auth_Command extends EE_Command {
 			$this->fs->remove( EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/default' );
 			$auths = Auth::get_global_auths();
 
-			foreach ( $auths as $key => $auth ) {
-				$flags = 'b';
+			if ( empty( $auths ) ) {
+				$this->regen_admin_tools_auth();
+			} else {
+				foreach ( $auths as $key => $auth ) {
+					$flags = 'b';
 
-				if ( 0 === $key ) {
-					$flags = 'bc';
+					if ( 0 === $key ) {
+						$flags = 'bc';
+					}
+
+					EE::exec( sprintf( 'docker exec %s htpasswd -%s /etc/nginx/htpasswd/default %s %s', EE_PROXY_TYPE, $flags, $auth->username, $auth->password ) );
 				}
-
-				EE::exec( sprintf( 'docker exec %s htpasswd -%s /etc/nginx/htpasswd/default %s %s', EE_PROXY_TYPE, $flags, $auth->username, $auth->password ) );
 			}
 
 			$sites = array_unique(
