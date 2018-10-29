@@ -89,9 +89,9 @@ class Auth_Command extends EE_Command {
 	/**
 	 * Creates http auth
 	 *
-	 * @param array  $assoc_args Assoc args passed to command
-	 * @param bool   $global     Enable auth on global
-	 * @param string $site_url   URL of site
+	 * @param array $assoc_args Assoc args passed to command
+	 * @param bool $global      Enable auth on global
+	 * @param string $site_url  URL of site
 	 *
 	 * @throws Exception
 	 */
@@ -106,13 +106,11 @@ class Auth_Command extends EE_Command {
 
 		$query_conditions = [
 			'site_url' => $site_url,
+			'username' => $user,
 		];
-		$error_message    = sprintf( 'Auth already exists on %s. To update it, use `ee auth update`', 'default' === $site_url ? 'global scope' : $site_url );
 
-		if ( isset( $assoc_args['user'] ) ) {
-			$query_conditions['username'] = $user;
-			$error_message                = "Auth for user $user already exists for this site";
-		}
+		$query_conditions['username'] = $user;
+		$error_message                = "Auth for user $user already exists for this site. To update it, use `ee auth update`'";
 
 		$existing_auths = Auth::where( $query_conditions );
 
