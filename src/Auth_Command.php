@@ -395,7 +395,7 @@ class Auth_Command extends EE_Command {
 	 * @param array  $assoc_args
 	 * @param string $site_url
 	 */
-	public function update_auth( array $assoc_args, string $site_url ) {
+	private function update_auth( array $assoc_args, string $site_url ) {
 		$user = EE\Utils\get_flag_value( $assoc_args, 'user' );
 
 		if ( ! $user ) {
@@ -433,7 +433,7 @@ class Auth_Command extends EE_Command {
 	 *
 	 * @throws Exception
 	 */
-	public function update_whitelist( string $site_url, string $ips ) {
+	private function update_whitelist( string $site_url, string $ips ) {
 		// TODO: Validate IPs
 		$user_ips = array_filter( explode( ',', $ips ), 'strlen' );      // Remove empty IPs
 
