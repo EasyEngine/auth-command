@@ -10,6 +10,7 @@ use EE\Model\Auth;
  * Initialize global admin tools auth if it's not present.
  *
  * @param string $display_log Wether to display log message or not.
+ *
  * @throws \EE\ExitException
  * @throws \Exception
  */
@@ -25,7 +26,7 @@ function init_global_admin_tools_auth( $display_log = true ) {
 
 	verify_htpasswd_is_present();
 
-	$pass = \EE\Utils\random_password();
+	$pass      = \EE\Utils\random_password();
 	$auth_data = [
 		'site_url' => 'default_admin_tools',
 		'username' => 'easyengine',
@@ -39,6 +40,10 @@ function init_global_admin_tools_auth( $display_log = true ) {
 	if ( $display_log ) {
 		EE::success( sprintf( 'Global admin-tools auth added. Use `ee auth list global` to view credentials.' ) );
 	}
+
+	$launch = EE::launch( 'docker inspect -f "{{range .IPAM.Config}}{{.Gateway}}{{end}}" ee-global-frontend-network' );
+	$ip     = trim( $launch->stdout );
+	EE::runcommand( "auth create global  --ip='$ip'" );
 }
 
 /**
