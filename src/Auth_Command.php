@@ -521,7 +521,7 @@ class Auth_Command extends EE_Command {
 	 *     $ ee auth delete example.com --user=example
 	 *
 	 *     # Remove global auth on all sites (but not admin tools) with default username(easyengine)
-	 *     $ ee auth delete example.com --site
+	 *     $ ee auth delete global
 	 *
 	 */
 	public function delete( $args, $assoc_args ) {
