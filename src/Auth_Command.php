@@ -509,8 +509,8 @@ class Auth_Command extends EE_Command {
 	 * [--user=<user>]
 	 * : Username that needs to be deleted.
 	 *
-	 * [--ip=<ip>]
-	 * : IP to whitelist.
+	 * [--ip]
+	 * : IP to remove. Default removes all.
 	 *
 	 * ## EXAMPLES
 	 *
@@ -557,7 +557,7 @@ class Auth_Command extends EE_Command {
 			reload_global_nginx_proxy();
 		} else {
 
-			if ( 'all' === $ip ) {
+			if ( true === $ip ) {
 				$whitelists = Whitelist::where( [ 'site_url' => $site_url ] );
 
 				foreach ( $whitelists as $whitelist ) {
