@@ -536,10 +536,13 @@ class Auth_Command extends EE_Command {
 	 *     $ ee auth delete global
 	 *
 	 *     # Remove whitelisted IPs on site
-	 *     $ ee auth delete example.com --ip
+	 *     $ ee auth delete example.com --ip=1.1.1.1
+	 *
+	 *     # Remove whitelisted IPs on site
+	 *     $ ee auth delete example.com --ip=all
 	 *
 	 *     # Remove whitelisted IPs on all sites
-	 *     $ ee auth delete global --ip
+	 *     $ ee auth delete global --ip=1.1.1.1
 	 *
 	 */
 	public function delete( $args, $assoc_args ) {
