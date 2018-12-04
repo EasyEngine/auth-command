@@ -70,6 +70,12 @@ class Auth_Command extends EE_Command {
 	 *     # Add auth on site with default username and random password
 	 *     $ ee auth create example.com --pass=password
 	 *
+	 *     # Whitelist IP on site
+	 *     $ ee auth create example.com --ip=8.8.8.8,1.1.1.1
+	 *
+	 *     # Whitelist IP on all sites
+	 *     $ ee auth create global --ip=8.8.8.8,1.1.1.1
+	 *
 	 */
 	public function create( $args, $assoc_args ) {
 
@@ -373,6 +379,12 @@ class Auth_Command extends EE_Command {
 	 *     # Update auth password on site with predefined username and password
 	 *     $ ee auth update example.com --user=test --pass=password
 	 *
+	 *     # Update whitelisted IPs on site
+	 *     $ ee auth update example.com --ip=8.8.8.8,1.1.1.1
+	 *
+	 *     # Update whitelisted IPs on all sites
+	 *     $ ee auth update global --ip=8.8.8.8,1.1.1.1
+	 *
 	 */
 	public function update( $args, $assoc_args ) {
 
@@ -522,6 +534,12 @@ class Auth_Command extends EE_Command {
 	 *
 	 *     # Remove global auth on all sites (but not admin tools) with default username(easyengine)
 	 *     $ ee auth delete global
+	 *
+	 *     # Remove whitelisted IPs on site
+	 *     $ ee auth delete example.com --ip
+	 *
+	 *     # Remove whitelisted IPs on all sites
+	 *     $ ee auth delete global --ip
 	 *
 	 */
 	public function delete( $args, $assoc_args ) {
