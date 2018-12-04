@@ -535,11 +535,11 @@ class Auth_Command extends EE_Command {
 	 *     # Remove global auth on all sites (but not admin tools) with default username(easyengine)
 	 *     $ ee auth delete global
 	 *
-	 *     # Remove whitelisted IPs on site
-	 *     $ ee auth delete example.com --ip=1.1.1.1
+	 *     # Remove specific whitelisted IPs on site
+	 *     $ ee auth delete example.com --ip=1.1.1.1,8.8.8.8
 	 *
-	 *     # Remove whitelisted IPs on site
-	 *     $ ee auth delete example.com --ip=all
+	 *     # Remove all whitelisted IPs on site
+	 *     $ ee auth delete example.com --ip
 	 *
 	 *     # Remove whitelisted IPs on all sites
 	 *     $ ee auth delete global --ip=1.1.1.1
