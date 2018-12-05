@@ -128,3 +128,71 @@ Feature: Auth Command
     """
     Error: Auth with username: rtcamp1 does not exists on php.test
     """
+
+  Scenario: Create new auth for PHP site
+    When I run 'bin/ee auth create php.test --user=rtcamp-test --pass=easyengine-test'
+    Then STDOUT should return exactly
+    """
+    Reloading global reverse proxy.
+    Success: Auth successfully updated for `php.test` scope. New values added:
+    User: rtcamp-test
+    Pass: easyengine-test
+    """
+      And Auth request on 'php.test' with user 'rtcamp-test' and password 'easyengine-test' should contain following headers:
+        | header           |
+        | HTTP/1.1 200 OK  |
+
+  Scenario: Check auth list
+    When I run 'bin/ee auth list php.test --format=csv'
+    Then STDOUT should return exactly
+    """
+    username,password
+    rtcamp,rtcamp
+    rtcamp-test,easyengine-test
+    """
+
+  Scenario: Delete specific auth user
+    When I run 'bin/ee auth delete php.test --user=rtcamp-test'
+    Then STDOUT should return exactly
+    """
+    Success: http auth successfully removed on php.test.
+    Reloading global reverse proxy.
+    """
+
+  Scenario: Check auth list
+    When I run 'bin/ee auth list php.test --format=csv'
+    Then STDOUT should return exactly
+    """
+    username,password
+    rtcamp,rtcamp
+    """
+
+  Scenario: Create new auth for PHP site
+    When I run 'bin/ee auth create php.test --user=test --pass=test'
+    Then STDOUT should return exactly
+    """
+    Reloading global reverse proxy.
+    Success: Auth successfully updated for `php.test` scope. New values added:
+    User: test
+    Pass: test
+    """
+      And Auth request on 'php.test' with user 'test' and password 'test' should contain following headers:
+        | header           |
+        | HTTP/1.1 200 OK  |
+
+  Scenario: Check auth list
+    When I run 'bin/ee auth list php.test --format=csv'
+    Then STDOUT should return exactly
+    """
+    username,password
+    rtcamp,rtcamp
+    test,test
+    """
+
+  Scenario: Delete specific auth user
+    When I run 'bin/ee auth delete php.test'
+    Then STDOUT should return exactly
+    """
+    Success: http auth successfully removed on php.test on  user
+    Reloading global reverse proxy.
+    """
