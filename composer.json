@@ -28,8 +28,7 @@
             "auth create",
             "auth delete",
             "auth list",
-            "auth update",
-            "auth whitelist"
+            "auth update"
         ]
     }
 }
