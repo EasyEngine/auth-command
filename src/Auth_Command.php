@@ -106,8 +106,7 @@ class Auth_Command extends EE_Command {
 		foreach ( $user_ips as $ip ) {
 
 			if ( ! filter_var( $ip, FILTER_VALIDATE_IP ) ) {
-				EE::error( 'Invalid IP list.' );
-				EE::log( 'Please check your list do not have any spaces or wrong IP addresses.' );
+				EE::error( 'Please check your list do not have any empty or wrong IP addresses.' );
 			}
 		}
 
