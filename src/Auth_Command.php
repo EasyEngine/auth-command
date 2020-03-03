@@ -75,7 +75,6 @@ class Auth_Command extends EE_Command {
 	 *
 	 *     # Whitelist IP on all sites
 	 *     $ ee auth create global --ip=8.8.8.8,1.1.1.1
-	 *
 	 */
 	public function create( $args, $assoc_args ) {
 
@@ -90,6 +89,28 @@ class Auth_Command extends EE_Command {
 		} else {
 			$this->create_auth( $assoc_args, $global, $site_url );
 		}
+	}
+
+	/**
+	 * Cleans and Validate IP addresses
+	 * Converts input separated by comma, spaces and new-lines in array
+	 *
+	 * @param string $ips IPs to clean and validate
+	 *
+	 * @return array $user_ips Cleaned IP addresses.
+	 */
+	private function clean_and_validate_ips( string $ips ) {
+
+		$user_ips = preg_split( '/[\ \n\,]+/', $ips );
+
+		foreach ( $user_ips as $ip ) {
+
+			if ( ! filter_var( $ip, FILTER_VALIDATE_IP ) ) {
+				EE::error( 'Please check your list do not have any empty or wrong IP addresses.' );
+			}
+		}
+
+		return $user_ips;
 	}
 
 	/**
@@ -156,8 +177,7 @@ class Auth_Command extends EE_Command {
 	 * @throws Exception
 	 */
 	private function create_whitelist( string $site_url, string $ips ) {
-		// TODO: Validate IPs
-		$user_ips = array_filter( explode( ',', $ips ), 'strlen' );      // Remove empty IPs
+		$user_ips = $this->clean_and_validate_ips( $ips );
 
 		if ( Whitelist::has_ips( $site_url ) ) {
 			EE::error( "Whitelist is already created on $site_url. To update IPs use `ee auth update` instead" );
@@ -193,7 +213,9 @@ class Auth_Command extends EE_Command {
 
 		$global = false;
 		if ( isset( $args[0] ) && 'global' === $args[0] ) {
-			$this->site_data = (object) [ 'site_url' => $args[0] ];
+			$this->site_data = (object) [
+				'site_url' => $args[0],
+			];
 			$global          = true;
 		} else {
 			$args            = auto_site_name( $args, 'auth', $command );
@@ -446,8 +468,7 @@ class Auth_Command extends EE_Command {
 	 * @throws Exception
 	 */
 	private function update_whitelist( string $site_url, string $ips ) {
-		// TODO: Validate IPs
-		$user_ips = array_filter( explode( ',', $ips ), 'strlen' );      // Remove empty IPs
+		$user_ips = $this->clean_and_validate_ips( $ips );
 
 		foreach ( $user_ips as $ip ) {
 			$existing_ips = Whitelist::where(
@@ -492,7 +513,9 @@ class Auth_Command extends EE_Command {
 	 */
 	private function get_auths( $site_url, $user, $error_if_empty = true ) {
 
-		$where_conditions = [ 'site_url' => $site_url ];
+		$where_conditions = [
+			'site_url' => $site_url,
+		];
 
 		$user_error_msg = '';
 		if ( $user ) {
@@ -579,14 +602,15 @@ class Auth_Command extends EE_Command {
 		} else {
 
 			if ( true === $ip ) {
-				$whitelists = Whitelist::where( [ 'site_url' => $site_url ] );
+				$whitelists = Whitelist::where( [
+					'site_url' => $site_url,
+				] );
 
 				foreach ( $whitelists as $whitelist ) {
 					$whitelist->delete();
 				}
 			} else {
-				// TODO: Validate IPs
-				$user_ips = array_filter( explode( ',', $ip ), 'strlen' );      // Remove empty IPs
+				$user_ips = $this->clean_and_validate_ips( $ips );
 
 				foreach ( $user_ips as $ip ) {
 					$existing_ips = Whitelist::where(
@@ -682,7 +706,6 @@ class Auth_Command extends EE_Command {
 				if ( 'table' === $format ) {
 					$log_msg = $admin_tools_auth ? 'This auth is applied only on admin-tools.' : '';
 				}
-
 			} else {
 				$auths = $this->get_auths( $site_url, false );
 			}
@@ -695,3 +718,4 @@ class Auth_Command extends EE_Command {
 		}
 	}
 }
+
