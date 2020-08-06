@@ -610,7 +610,7 @@ class Auth_Command extends EE_Command {
 					$whitelist->delete();
 				}
 			} else {
-				$user_ips = $this->clean_and_validate_ips( $ips );
+				$user_ips = $this->clean_and_validate_ips( $ip );
 
 				foreach ( $user_ips as $ip ) {
 					$existing_ips = Whitelist::where(
