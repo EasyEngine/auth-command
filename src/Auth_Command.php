@@ -534,7 +534,9 @@ class Auth_Command extends EE_Command {
 	}
 
 	/**
-	 * Deletes http authentication for a site. Default: removes http authentication from site. If `--user` is passed it removes that specific user.
+	 * Deletes http authentication for a site.
+	 *
+	 * Default: removes http authentication from site. If `--user` is passed it removes that specific user.
 	 *
 	 * ## OPTIONS
 	 *
