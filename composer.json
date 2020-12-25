@@ -15,6 +15,8 @@
         "files": [
             "src/auth-utils.php",
             "src/helper/hooks.php",
+            "src/db/Auth.php",
+            "src/db/Whitelist.php",
             "auth-command.php"
         ]
     },
