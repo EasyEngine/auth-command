@@ -10,12 +10,11 @@
     "autoload": {
         "psr-4": {
             "": "src/",
-            "\\EE\\Model\\": "src/db/"
+            "EE\\Model\\": "src/db/"
         },
         "files": [
-            "src/auth-utils.php",
-            "src/helper/hooks.php",
-            "auth-command.php"
+            "auth-command.php",
+            "src/auth-utils.php"
         ]
     },
     "extra": {
