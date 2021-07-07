@@ -5,6 +5,8 @@ namespace EE\Auth\Utils;
 
 use EE;
 use EE\Model\Auth;
+use EE\Utils as EE_Utils;
+use EE\Service\Utils as Service_Utils;
 
 /**
  * Initialize global admin tools auth if it's not present.
@@ -26,7 +28,7 @@ function init_global_admin_tools_auth( $display_log = true ) {
 
 	verify_htpasswd_is_present();
 
-	$pass      = \EE\Utils\random_password();
+	$pass      = EE_Utils\random_password();
 	$auth_data = [
 		'site_url' => 'default_admin_tools',
 		'username' => 'easyengine',
@@ -51,7 +53,7 @@ function init_global_admin_tools_auth( $display_log = true ) {
  */
 function verify_htpasswd_is_present() {
 
-	EE\Service\Utils\nginx_proxy_check();
+	Service_Utils\nginx_proxy_check();
 	EE::debug( 'Verifying htpasswd is present.' );
 	if ( EE::exec( sprintf( 'docker exec %s sh -c \'command -v htpasswd\'', EE_PROXY_TYPE ) ) ) {
 		return;

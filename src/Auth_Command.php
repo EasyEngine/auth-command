@@ -17,10 +17,11 @@
 use EE\Model\Auth;
 use EE\Model\Whitelist;
 use Symfony\Component\Filesystem\Filesystem;
-use function EE\Auth\Utils\verify_htpasswd_is_present;
-use function EE\Site\Utils\auto_site_name;
-use function EE\Site\Utils\get_site_info;
-use function EE\Site\Utils\reload_global_nginx_proxy;
+use EE\Model\Site;
+use EE\Utils as EE_Utils;
+use EE\Auth\Utils as Auth_Utils;
+use EE\Site\Utils as Site_Utils;
+
 
 class Auth_Command extends EE_Command {
 
@@ -78,10 +79,10 @@ class Auth_Command extends EE_Command {
 	 */
 	public function create( $args, $assoc_args ) {
 
-		verify_htpasswd_is_present();
+		Auth_Utils\verify_htpasswd_is_present();
 
 		$global   = $this->populate_info( $args, __FUNCTION__ );
-		$ips      = \EE\Utils\get_flag_value( $assoc_args, 'ip' );
+		$ips      = EE_Utils\get_flag_value( $assoc_args, 'ip' );
 		$site_url = $global ? 'default' : $this->site_data->site_url;
 
 		if ( $ips ) {
@@ -123,8 +124,8 @@ class Auth_Command extends EE_Command {
 	 * @throws Exception
 	 */
 	private function create_auth( array $assoc_args, bool $global, string $site_url ) {
-		$user      = \EE\Utils\get_flag_value( $assoc_args, 'user', 'ee-' . EE\Utils\random_password( 6 ) );
-		$pass      = \EE\Utils\get_flag_value( $assoc_args, 'pass', EE\Utils\random_password() );
+		$user      = EE_Utils\get_flag_value( $assoc_args, 'user', 'ee-' . EE_Utils\random_password( 6 ) );
+		$pass      = EE_Utils\get_flag_value( $assoc_args, 'pass', EE_Utils\random_password() );
 		$auth_data = [
 			'site_url' => $site_url,
 			'username' => $user,
@@ -160,7 +161,7 @@ class Auth_Command extends EE_Command {
 		}
 
 		EE::log( 'Reloading global reverse proxy.' );
-		reload_global_nginx_proxy();
+		Site_Utils\reload_global_nginx_proxy();
 
 		EE::success( sprintf( 'Auth successfully updated for `%s` scope. New values added:', $this->site_data->site_url ) );
 		EE::line( 'User: ' . $user );
@@ -198,7 +199,7 @@ class Auth_Command extends EE_Command {
 			$this->generate_site_whitelist( $site_url );
 		}
 
-		reload_global_nginx_proxy();
+		Site_Utils\reload_global_nginx_proxy();
 	}
 
 	/**
@@ -218,8 +219,8 @@ class Auth_Command extends EE_Command {
 			];
 			$global          = true;
 		} else {
-			$args            = auto_site_name( $args, 'auth', $command );
-			$this->site_data = get_site_info( $args, true, true, false );
+			$args            = Site_Utils\auto_site_name( $args, 'auth', $command );
+			$this->site_data = Site_Utils\get_site_info( $args, true, true, false );
 		}
 
 		return $global;
@@ -231,13 +232,13 @@ class Auth_Command extends EE_Command {
 	 * @throws \EE\ExitException
 	 */
 	private function regen_admin_tools_auth() {
-		$admin_tools = \EE\Model\Site::where( 'admin_tools', '1' );
-		$mailhog     = \EE\Model\Site::where( 'mailhog_enabled', '1' );
+		$admin_tools = Site::where( 'admin_tools', '1' );
+		$mailhog     = Site::where( 'mailhog_enabled', '1' );
 		if ( empty( $admin_tools ) && empty( $mailhog ) ) {
 			return;
 		}
 		EE::log( 'Creating new auth for admin-tools only.' );
-		\EE\Auth\Utils\init_global_admin_tools_auth();
+		Auth_Utils\init_global_admin_tools_auth();
 	}
 
 	/**
@@ -410,11 +411,11 @@ class Auth_Command extends EE_Command {
 	 */
 	public function update( $args, $assoc_args ) {
 
-		verify_htpasswd_is_present();
+		Auth_Utils\verify_htpasswd_is_present();
 
 		$global   = $this->populate_info( $args, __FUNCTION__ );
 		$site_url = $global ? 'default' : $this->site_data->site_url;
-		$ips       = EE\Utils\get_flag_value( $assoc_args, 'ip' );
+		$ips      = EE_Utils\get_flag_value( $assoc_args, 'ip' );
 
 		if ( $ips ) {
 			$this->update_whitelist( $site_url, $ips );
@@ -430,13 +431,13 @@ class Auth_Command extends EE_Command {
 	 * @param string $site_url
 	 */
 	private function update_auth( array $assoc_args, string $site_url ) {
-		$user = EE\Utils\get_flag_value( $assoc_args, 'user' );
+		$user = EE_Utils\get_flag_value( $assoc_args, 'user' );
 
 		if ( ! $user ) {
 			EE::error( 'Please provide auth user with --user flag' );
 		}
 
-		$pass = EE\Utils\get_flag_value( $assoc_args, 'pass', EE\Utils\random_password() );
+		$pass = EE_Utils\get_flag_value( $assoc_args, 'pass', EE_Utils\random_password() );
 
 		$auths = $this->get_auths( $site_url, $user );
 
@@ -452,7 +453,7 @@ class Auth_Command extends EE_Command {
 		}
 
 		EE::log( 'Reloading global reverse proxy.' );
-		reload_global_nginx_proxy();
+		Site_Utils\reload_global_nginx_proxy();
 
 		EE::success( sprintf( 'Auth successfully updated for `%s` scope. New values added:', $this->site_data->site_url ) );
 		EE::line( 'User: ' . $user );
@@ -497,7 +498,7 @@ class Auth_Command extends EE_Command {
 			$this->generate_site_whitelist( $site_url );
 		}
 
-		reload_global_nginx_proxy();
+		Site_Utils\reload_global_nginx_proxy();
 
 	}
 
@@ -572,14 +573,14 @@ class Auth_Command extends EE_Command {
 	 */
 	public function delete( $args, $assoc_args ) {
 
-		verify_htpasswd_is_present();
+		Auth_Utils\verify_htpasswd_is_present();
 
 		$global   = $this->populate_info( $args, __FUNCTION__ );
 		$site_url = $global ? 'default' : $this->site_data->site_url;
-		$ip       = EE\Utils\get_flag_value( $assoc_args, 'ip' );
+		$ip       = EE_Utils\get_flag_value( $assoc_args, 'ip' );
 
 		if ( ! $ip ) {
-			$user = EE\Utils\get_flag_value( $assoc_args, 'user' );
+			$user = EE_Utils\get_flag_value( $assoc_args, 'user' );
 			$auths = $this->get_auths( $site_url, $user );
 
 			foreach ( $auths as $auth ) {
@@ -600,7 +601,7 @@ class Auth_Command extends EE_Command {
 
 			EE::success( $success_message );
 			EE::log( 'Reloading global reverse proxy.' );
-			reload_global_nginx_proxy();
+			Site_Utils\reload_global_nginx_proxy();
 		} else {
 
 			if ( true === $ip ) {
@@ -644,7 +645,7 @@ class Auth_Command extends EE_Command {
 				$this->generate_site_whitelist( $site_url );
 			}
 
-			reload_global_nginx_proxy();
+			Site_Utils\reload_global_nginx_proxy();
 		}
 	}
 
@@ -684,7 +685,7 @@ class Auth_Command extends EE_Command {
 
 		$global   = $this->populate_info( $args, __FUNCTION__ );
 		$site_url = $global ? 'default' : $this->site_data->site_url;
-		$ip       = \EE\Utils\get_flag_value( $assoc_args, 'ip' );
+		$ip       = EE_Utils\get_flag_value( $assoc_args, 'ip' );
 
 		if ( $ip ) {
 			$whitelists = Whitelist::where( 'site_url', $site_url );
@@ -704,7 +705,7 @@ class Auth_Command extends EE_Command {
 				if ( empty( $auths ) ) {
 					EE::error( 'Auth does not exists on global.' );
 				}
-				$format = \EE\Utils\get_flag_value( $assoc_args, 'format' );
+				$format = EE_Utils\get_flag_value( $assoc_args, 'format' );
 				if ( 'table' === $format ) {
 					$log_msg = $admin_tools_auth ? 'This auth is applied only on admin-tools.' : '';
 				}

@@ -8,6 +8,7 @@ use EE\Model\Auth;
 use EE\Model\Site;
 use EE\Model\Whitelist;
 use Symfony\Component\Filesystem\Filesystem;
+use EE\Site\Utils as Site_Utils;
 
 /**
  * Hook to cleanup auth entries and whitelisted ips if any.
@@ -44,7 +45,7 @@ function cleanup_auth_and_whitelist( $site_url ) {
 		$fs->remove( $site_whitelist_file );
 	}
 
-	\EE\Site\Utils\reload_global_nginx_proxy();
+	Site_Utils\reload_global_nginx_proxy();
 }
 
 EE::add_hook( 'site_cleanup', 'cleanup_auth_and_whitelist' );
