@@ -80,14 +80,15 @@ class Auth_Command extends EE_Command {
 
 		verify_htpasswd_is_present();
 
-		$global   = $this->populate_info( $args, __FUNCTION__ );
-		$ips      = \EE\Utils\get_flag_value( $assoc_args, 'ip' );
-		$site_url = $global ? 'default' : $this->site_data->site_url;
+		$global    = $this->populate_info( $args, __FUNCTION__ );
+		$ips       = \EE\Utils\get_flag_value( $assoc_args, 'ip' );
+		$site_url  = $global ? 'default' : $this->site_data->site_url;
+		$site_type = $global ? 'wp' : $this->site_data->app_sub_type;
 
 		if ( $ips ) {
 			$this->create_whitelist( $site_url, $ips );
 		} else {
-			$this->create_auth( $assoc_args, $global, $site_url );
+			$this->create_auth( $assoc_args, $global, $site_url, $site_type );
 		}
 	}
 
@@ -119,10 +120,11 @@ class Auth_Command extends EE_Command {
 	 * @param array $assoc_args Assoc args passed to command
 	 * @param bool $global      Enable auth on global
 	 * @param string $site_url  URL of site
+	 * @param string $site_type Type of site: wp|subdir|subdom
 	 *
 	 * @throws Exception
 	 */
-	private function create_auth( array $assoc_args, bool $global, string $site_url ) {
+	private function create_auth( array $assoc_args, bool $global, string $site_url, string $site_type ) {
 		$user      = \EE\Utils\get_flag_value( $assoc_args, 'user', 'ee-' . EE\Utils\random_password( 6 ) );
 		$pass      = \EE\Utils\get_flag_value( $assoc_args, 'pass', EE\Utils\random_password() );
 		$auth_data = [
@@ -154,9 +156,9 @@ class Auth_Command extends EE_Command {
 		Auth::create( $auth_data );
 
 		if ( 'default' === $site_url ) {
-			$this->generate_global_auth_files();
+			$this->generate_global_auth_files( $site_type );
 		} else {
-			$this->generate_site_auth_files( $site_url );
+			$this->generate_site_auth_files( $site_url, $site_type );
 		}
 
 		EE::log( 'Reloading global reverse proxy.' );
@@ -243,9 +245,11 @@ class Auth_Command extends EE_Command {
 	/**
 	 * Generates auth files for global auth and all sites.
 	 *
+	 * @param string $site_type Type of site: wp|subdir|subdom
+	 *
 	 * @throws Exception
 	 */
-	private function generate_global_auth_files() {
+	private function generate_global_auth_files( $site_type ) {
 
 		$global_admin_tools_auth = Auth::get_global_admin_tools_auth();
 
@@ -278,7 +282,7 @@ class Auth_Command extends EE_Command {
 			);
 
 			foreach ( $sites as $site ) {
-				$this->generate_site_auth_files( $site );
+				$this->generate_site_auth_files( $site, $site_type );
 			}
 		}
 	}
@@ -287,11 +291,28 @@ class Auth_Command extends EE_Command {
 	 * Generates auth files for a site
 	 *
 	 * @param string $site_url URL of site
+	 * @param string $site_type Type of site: wp|subdir|subdom
 	 *
 	 * @throws Exception
 	 */
-	private function generate_site_auth_files( string $site_url ) {
-		$site_auth_file = EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/' . $site_url;
+	private function generate_site_auth_files( string $site_url, string $site_type ) {
+
+		$auth_file_name = '';
+		switch ( $site_type ) {
+			case 'wp':
+				$auth_file_name = $site_url;
+				break;
+			case 'subdir':
+				$auth_file_name = $site_url;
+				break;
+			case 'subdom':
+				$auth_file_name = '*.' . $site_url;
+				break;
+			default:
+				throw new Exception( 'unexpected site type' );
+		}
+		$site_auth_file = EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/' . $auth_file_name;
+
 		$this->fs->remove( $site_auth_file );
 
 		$auths = array_merge(
@@ -302,10 +323,10 @@ class Auth_Command extends EE_Command {
 		foreach ( $auths as $key => $auth ) {
 			$flags = 'b';
 
-			if ( $key === 0 ) {
+			if ( 0 === $key ) {
 				$flags = 'bc';
 			}
-			EE::exec( sprintf( 'docker exec %s htpasswd -%s /etc/nginx/htpasswd/%s %s %s', EE_PROXY_TYPE, $flags, $site_url, $auth->username, $auth->password ) );
+			EE::exec( sprintf( 'docker exec %s htpasswd -%s /etc/nginx/htpasswd/%s %s %s', EE_PROXY_TYPE, $flags, $auth_file_name, $auth->username, $auth->password ) );
 		}
 	}
 
@@ -412,14 +433,15 @@ class Auth_Command extends EE_Command {
 
 		verify_htpasswd_is_present();
 
-		$global   = $this->populate_info( $args, __FUNCTION__ );
-		$site_url = $global ? 'default' : $this->site_data->site_url;
+		$global    = $this->populate_info( $args, __FUNCTION__ );
+		$site_url  = $global ? 'default' : $this->site_data->site_url;
 		$ips       = EE\Utils\get_flag_value( $assoc_args, 'ip' );
+		$site_type = $global ? 'wp' : $this->site_data->app_sub_type;
 
 		if ( $ips ) {
 			$this->update_whitelist( $site_url, $ips );
 		} else {
-			$this->update_auth( $assoc_args, $site_url );
+			$this->update_auth( $assoc_args, $site_url, $site_type );
 		}
 	}
 
@@ -428,8 +450,9 @@ class Auth_Command extends EE_Command {
 	 *
 	 * @param array  $assoc_args
 	 * @param string $site_url
+	 * @param string $site_type Type of site: wp|subdir|subdom
 	 */
-	private function update_auth( array $assoc_args, string $site_url ) {
+	private function update_auth( array $assoc_args, string $site_url, string $site_type ) {
 		$user = EE\Utils\get_flag_value( $assoc_args, 'user' );
 
 		if ( ! $user ) {
@@ -446,9 +469,9 @@ class Auth_Command extends EE_Command {
 		}
 
 		if ( 'default' === $site_url ) {
-			$this->generate_global_auth_files();
+			$this->generate_global_auth_files( $site_type );
 		} else {
-			$this->generate_site_auth_files( $site_url );
+			$this->generate_site_auth_files( $site_url, $site_type );
 		}
 
 		EE::log( 'Reloading global reverse proxy.' );
@@ -574,12 +597,13 @@ class Auth_Command extends EE_Command {
 
 		verify_htpasswd_is_present();
 
-		$global   = $this->populate_info( $args, __FUNCTION__ );
-		$site_url = $global ? 'default' : $this->site_data->site_url;
-		$ip       = EE\Utils\get_flag_value( $assoc_args, 'ip' );
+		$global    = $this->populate_info( $args, __FUNCTION__ );
+		$site_url  = $global ? 'default' : $this->site_data->site_url;
+		$ip        = EE\Utils\get_flag_value( $assoc_args, 'ip' );
+		$site_type = $global ? 'wp' : $this->site_data->app_sub_type;
 
 		if ( ! $ip ) {
-			$user = EE\Utils\get_flag_value( $assoc_args, 'user' );
+			$user  = EE\Utils\get_flag_value( $assoc_args, 'user' );
 			$auths = $this->get_auths( $site_url, $user );
 
 			foreach ( $auths as $auth ) {
@@ -587,9 +611,9 @@ class Auth_Command extends EE_Command {
 			}
 
 			if ( 'default' === $site_url ) {
-				$this->generate_global_auth_files();
+				$this->generate_global_auth_files( $site_type );
 			} else {
-				$this->generate_site_auth_files( $site_url );
+				$this->generate_site_auth_files( $site_url, $site_type );
 			}
 
 			if ( $user ) {
