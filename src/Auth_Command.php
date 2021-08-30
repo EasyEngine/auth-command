@@ -105,6 +105,11 @@ class Auth_Command extends EE_Command {
 
 		foreach ( $user_ips as $ip ) {
 
+			// Remove subnet from ip if present.
+			if ( preg_match( '~^(.+?)/([^/]+)$~', $ip, $m ) ) {
+				$ip = $m[1];
+			}
+
 			if ( ! filter_var( $ip, FILTER_VALIDATE_IP ) ) {
 				EE::error( 'Please check your list do not have any empty or wrong IP addresses.' );
 			}
