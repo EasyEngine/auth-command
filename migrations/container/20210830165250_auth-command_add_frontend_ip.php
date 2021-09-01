@@ -6,7 +6,6 @@ use EE;
 use EE\Migration\Base;
 use EE\Model\Option;
 use function EE\Service\Utils\ensure_global_network_initialized;
-use function EE\Site\Utils\get_available_subnet;
 use function EE\Utils\get_config_value;
 
 class AddFrontendIp extends Base {
