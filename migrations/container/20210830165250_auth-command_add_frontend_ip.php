@@ -4,6 +4,8 @@ namespace EE\Migration;
 
 use EE;
 use EE\Migration\Base;
+use EE\Model\Option;
+use function EE\Service\Utils\ensure_global_network_initialized;
 use function EE\Utils\get_config_value;
 
 class AddFrontendIp extends Base {
@@ -30,7 +32,10 @@ class AddFrontendIp extends Base {
 			return;
 		}
 
-		$frontend_subnet_ip = get_config_value( 'frontend_subnet_ip', '10.0.0.0/16' );
+		ensure_global_network_initialized();
+
+		$frontend_subnet_ip = Option::get( 'frontend_subnet_ip' );
+
 		EE::runcommand( "auth update global --ip='$frontend_subnet_ip'" );
 	}
 
