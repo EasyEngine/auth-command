@@ -35,8 +35,8 @@ class AddFrontendIp extends Base {
 		ensure_global_network_initialized();
 
 		$frontend_subnet_ip = Option::get( 'frontend_subnet_ip' );
-
-		EE::runcommand( "auth update global --ip='$frontend_subnet_ip'" );
+		$auth = new \Auth_Command();
+		$auth->update( ['global'], [ 'ip' => $frontend_subnet_ip ] );
 	}
 
 	/**
