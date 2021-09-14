@@ -16,6 +16,7 @@
 
 use EE\Model\Auth;
 use EE\Model\Whitelist;
+use EE\Model\Site;
 use Symfony\Component\Filesystem\Filesystem;
 use function EE\Auth\Utils\verify_htpasswd_is_present;
 use function EE\Site\Utils\auto_site_name;
@@ -88,6 +89,45 @@ class Auth_Command extends EE_Command {
 			$this->create_whitelist( $site_url, $ips );
 		} else {
 			$this->create_auth( $assoc_args, $global, $site_url );
+		}
+	}
+
+	/**
+	 * Creates http authentication for a all the sites available.
+	 *
+	 * ## OPTIONS
+	 * 
+	 * [--user=<user>]
+	 * : Username for http auth.
+	 *
+	 * [--pass=<pass>]
+	 * : Password for http auth.
+	 *
+	 * ## EXAMPLES
+	 *
+	 *     # Add auth on all sites with predefined username and password
+	 *     $ ee auth all_sites --user=test --pass=password
+	 * 
+	 */
+	public function all_sites( $args, $assoc_args ) {
+		verify_htpasswd_is_present();
+
+		$user   = \EE\Utils\get_flag_value( $assoc_args, 'user' );
+		$passwd = \EE\Utils\get_flag_value( $assoc_args, 'pass' );
+
+		// check if username and password is set.
+		if ( empty( $user ) || empty( $passwd ) ) {
+			EE::error( 'Invalid usage. Correct usage: ee auth all_sites --user --pass' );
+			return;
+		}
+
+		$sites = Site::all(); 
+
+		// run through all the available sites.
+		foreach( $sites as $site ) {
+			EE::line( 'Adding auth to ' . $site->site_url );
+			$this->create_auth( $assoc_args, 'default', $site->site_url );
+			EE::line( '===================' );
 		}
 	}
 
@@ -167,7 +207,7 @@ class Auth_Command extends EE_Command {
 		EE::log( 'Reloading global reverse proxy.' );
 		reload_global_nginx_proxy();
 
-		EE::success( sprintf( 'Auth successfully updated for `%s` scope. New values added:', $this->site_data->site_url ) );
+		EE::success( sprintf( 'Auth successfully updated for `%s` scope. New values added:', $site_url ) );
 		EE::line( 'User: ' . $user );
 		EE::line( 'Pass: ' . $pass );
 
