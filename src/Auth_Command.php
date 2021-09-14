@@ -93,7 +93,7 @@ class Auth_Command extends EE_Command {
 	}
 
 	/**
-	 * Creates http authentication for a all the sites available.
+	 * Creates http authentication for all the available.
 	 *
 	 * ## OPTIONS
 	 * 
@@ -102,7 +102,13 @@ class Auth_Command extends EE_Command {
 	 *
 	 * [--pass=<pass>]
 	 * : Password for http auth.
+	 * 
+	 * [--ignore-existing]
+	 * : Ignores the sites which already have the user added.
 	 *
+	 * [--silent]
+	 * : Does not make a fuss.
+	 * 
 	 * ## EXAMPLES
 	 *
 	 *     # Add auth on all sites with predefined username and password
@@ -112,8 +118,10 @@ class Auth_Command extends EE_Command {
 	public function all_sites( $args, $assoc_args ) {
 		verify_htpasswd_is_present();
 
-		$user   = \EE\Utils\get_flag_value( $assoc_args, 'user' );
-		$passwd = \EE\Utils\get_flag_value( $assoc_args, 'pass' );
+		$user            = \EE\Utils\get_flag_value( $assoc_args, 'user' );
+		$passwd          = \EE\Utils\get_flag_value( $assoc_args, 'pass' );
+		$ignore_existing = \EE\Utils\get_flag_value( $assoc_args, 'ignore-existing' );
+		$silent          = \EE\Utils\get_flag_value( $assoc_args, 'silent' );
 
 		// check if username and password is set.
 		if ( empty( $user ) || empty( $passwd ) ) {
@@ -125,9 +133,24 @@ class Auth_Command extends EE_Command {
 
 		// run through all the available sites.
 		foreach( $sites as $site ) {
-			EE::line( 'Adding auth to ' . $site->site_url );
+			$query_conditions = [
+				'site_url' => $site->site_url,
+				'username' => $user,
+			];
+
+			$existing_auths = Auth::where( $query_conditions );
+
+			if ( ! empty( $existing_auths ) && $ignore_existing) {
+				$silent ? '' : EE::warning( sprintf( '`%1$s` already exists on `%2$s`. Ignoring...', $user, $site->site_url ) );
+				$silent ? '' : EE::line( '+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+' );
+				continue;
+			}
+
+			$silent ? '' : EE::line( sprintf( 'Adding auth to %s', $site->site_url ) );
+
 			$this->create_auth( $assoc_args, 'default', $site->site_url );
-			EE::line( '===================' );
+
+			$silent ? '' : EE::line( '+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+' );
 		}
 	}
 
