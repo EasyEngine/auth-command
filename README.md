@@ -27,6 +27,18 @@ ee auth
        # Delete auth from a site
        $ ee auth delete example.com --user=test
 
+	   # Add auth to all sites
+	   $ ee auth all-sites --user=test --pass=test
+
+	   # Delete auth from all sites
+	   $ ee auth delete all-sites
+
+	   # Delete auth from all sites with username
+	   $ ee auth delete all-sites --user=test
+
+	   # Delete auth from all sites with username and password
+	   $ ee auth delete all-sites --user=test --pass=test
+
 
 
 ### ee auth create
@@ -72,13 +84,34 @@ ee auth create [<site-name>] [--user=<user>] [--pass=<pass>] [--ip=<ip>]
     $ ee auth create global --ip=8.8.8.8,1.1.1.1
 
 
+### ee auth all-sites
+
+Creates http authentication for all available sites.
+
+~~~
+ee auth all-sites [--user=<user>] [--pass=<pass>]
+~~~
+
+**OPTIONS**
+
+	[--user=<user>]
+		Username for http auth.
+
+	[--pass=<pass>]
+		Password for http auth.
+
+**EXAMPLES**
+
+    # Add auth on all sites with username and password
+    $ ee auth all-sites --user=test --pass=test
+
 
 ### ee auth delete
 
 Deletes http authentication for a site. Default: removes http authentication from site. If `--user` is passed it removes that specific user.
 
 ~~~
-ee auth delete [<site-name>] [--user=<user>] [--ip]
+ee auth delete [<site-name>/<all-sites>] [--user=<user>] [--pass=<pass>] [--ip]
 ~~~
 
 **OPTIONS**
@@ -86,8 +119,14 @@ ee auth delete [<site-name>] [--user=<user>] [--ip]
 	[<site-name>]
 		Name of website / `global` for global scope.
 
+	[<all-sites>]
+		Delete auth from all sites available.
+
 	[--user=<user>]
 		Username that needs to be deleted.
+
+	[--user=<user>]
+		Password that needs to be matched while using all-sites.
 
 	[--ip]
 		IP to remove. Default removes all.
@@ -102,6 +141,15 @@ ee auth delete [<site-name>] [--user=<user>] [--ip]
 
     # Remove global auth on all sites (but not admin tools) with default username(easyengine)
     $ ee auth delete global
+
+	# Remove auth on all sites (but not admin tools)
+	$ ee auth delete all-sites
+
+	# Remove auth on all sites (but not admin tools) with username
+	$ ee auth delete all-sites --user=test
+
+	# Remove auth on all sites (but not admin tools) with username and password
+	$ ee auth delete all-sites --user=test --pass=test
 
     # Remove specific whitelisted IPs on site
     $ ee auth delete example.com --ip=1.1.1.1,8.8.8.8
