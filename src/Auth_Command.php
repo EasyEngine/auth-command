@@ -112,8 +112,9 @@ class Auth_Command extends EE_Command {
 	 * ## EXAMPLES
 	 *
 	 *     # Add auth on all sites with predefined username and password
-	 *     $ ee auth all_sites --user=test --pass=password
+	 *     $ ee auth all-sites --user=test --pass=password
 	 * 
+	 * @subcommand all-sites
 	 */
 	public function all_sites( $args, $assoc_args ) {
 		verify_htpasswd_is_present();
@@ -610,9 +611,15 @@ class Auth_Command extends EE_Command {
 	 *
 	 * [<site-name>]
 	 * : Name of website / `global` for global scope.
+	 * 
+	 * [<all-sites>]
+	 * : Delete authentication on all sites.
 	 *
 	 * [--user=<user>]
 	 * : Username that needs to be deleted.
+	 * 
+	 * [--pass=<pass>]
+	 * : Username with this password that needs to be deleted.
 	 *
 	 * [--ip]
 	 * : IP to remove. Default removes all.
@@ -641,6 +648,11 @@ class Auth_Command extends EE_Command {
 	public function delete( $args, $assoc_args ) {
 
 		verify_htpasswd_is_present();
+
+		if ( 'all-sites' === $args[0] ) { 
+			$this->delete_all( $assoc_args );
+			return;
+		}
 
 		$global   = $this->populate_info( $args, __FUNCTION__ );
 		$site_url = $global ? 'default' : $this->site_data->site_url;
@@ -713,6 +725,55 @@ class Auth_Command extends EE_Command {
 			}
 
 			reload_global_nginx_proxy();
+		}
+	}
+	
+	/**
+	 * Deletes authentication on all the sites (matching a criteria)
+	 *
+	 * @param array $assoc_args associated arguments passed form the CLI.
+	 *
+	 * @return void
+	 */
+	private function delete_all( $assoc_args ) {
+		EE::confirm( 'This action will delete authentication on all the sites. Do you wish to continue?' );
+		$args = array();
+
+		if ( ! empty( $assoc_args['user'] ) ) {
+			$args['username'] = $assoc_args['user'];
+		}
+
+		if ( ! empty( $assoc_args['pass'] ) ) {
+			$args['password'] = $assoc_args['pass'];
+		}
+
+
+		if ( ! empty( $args ) ) {
+			$sites = Auth::where( $args );
+		} else {
+			$sites = Auth::all();
+		}
+
+		if ( empty( $sites ) ) {
+			$optional_text = ( ! empty( $assoc_args['pass'] ) ) ? sprintf( 'and password `%s`', $assoc_args['pass'] ) : '';
+			empty( $args ) ? EE::error( 'No sites found' ) : EE::error( sprintf( 'No sites auth with username `%1$s` %2$s', $assoc_args['user'], $optional_text ) );
+			return;
+		}
+
+		foreach( $sites as $site ) {
+			if ( 'default_admin_tools' === $site->site_url ) {
+				continue;
+			}
+
+			$args = array( $site->site_url );
+
+			$assoc_args = array(
+				'user' => $site->username,
+			);
+
+			$this->delete( $args, $assoc_args );
+			EE::line( sprintf( 'Deleted authentication on %1$s', $site->site_url ) );
+			EE::line( '+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+' );
 		}
 	}
 
