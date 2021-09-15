@@ -736,17 +736,19 @@ class Auth_Command extends EE_Command {
 	 * @return void
 	 */
 	private function delete_all( $assoc_args ) {
-		EE::confirm( 'This action will delete authentication on all the sites. Do you wish to continue?' );
 		$args = array();
 
 		if ( ! empty( $assoc_args['user'] ) ) {
 			$args['username'] = $assoc_args['user'];
 		}
 
-		if ( ! empty( $assoc_args['pass'] ) ) {
+		if ( ! empty( $assoc_args['pass'] ) && ! empty( $assoc_args['user'] ) ) {
 			$args['password'] = $assoc_args['pass'];
+		} else {
+			EE::error( 'Incorrect usage. Please supply the username using --user' );
 		}
 
+		EE::confirm( 'This action will delete authentication on all the sites. Do you wish to continue?' );
 
 		if ( ! empty( $args ) ) {
 			$sites = Auth::where( $args );
