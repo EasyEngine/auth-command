@@ -684,8 +684,17 @@ class Auth_Command extends EE_Command {
 	 *     # List all global auth
 	 *     $ ee auth list global
 	 *
+	 *     # List all auths across all sites
+	 *     $ ee auth list
+	 *
 	 */
 	public function list( $args, $assoc_args ) {
+
+		// handle only 'ee auth list' separately.
+		if ( empty( $args ) ) {
+			$this->display_all_auths();
+			return;
+		}
 
 		$global   = $this->populate_info( $args, __FUNCTION__ );
 		$site_url = $global ? 'default' : $this->site_data->site_url;
@@ -730,5 +739,71 @@ class Auth_Command extends EE_Command {
 			}
 		}
 	}
+
+	/**
+	 * This will display all the auths of all the sites
+	 *
+	 * @return void
+	 * @throws Exception
+	 */
+	private function display_all_auths() {
+
+		$start_time = microtime( true );
+
+		$some      = array();
+		$sites     = Auth::all();
+		$formatter = new EE\Formatter( $assoc_args, [ 'site', 'username', 'password' ] );
+
+		foreach ( $sites as $site ) {
+
+			if ( $site->site_url !== 'default' ) {
+
+				if ( ! isset( $some[ $site->site_url ] ) ) {
+
+					$some[ $site->site_url ] = array(
+						array(
+							'username' => $site->username,
+							'password' => $site->password,
+						),
+					);
+
+				} else {
+
+					$new_arr = array(
+						'username' => $site->username,
+						'password' => $site->password,
+					);
+
+					array_push( $some[ $site->site_url ], $new_arr );
+				}
+			}
+		}
+		$main = array();
+
+		foreach ( $some as $key => $value ) {
+
+			$complete         = array();
+			$complete['site'] = $key;
+
+			foreach ( $value as $v ) {
+
+				$complete['username'] = $v['username'];
+				$complete['password'] = $v['password'];
+
+				array_push( $main, $complete );
+
+			}
+		}
+
+		$formatter->display_items( $main );
+
+		$end_time       = microtime( true );
+		$execution_time = ( $end_time - $start_time );
+
+		echo ' Execution time of script = ' . $execution_time . ' sec';
+
+
+	}
+
 }
 
