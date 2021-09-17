@@ -754,8 +754,8 @@ class Auth_Command extends EE_Command {
 		// It will group all the auths for a particular site together.
 		$hash_table = array();
 
-		// Fetch all the auths across all the sites other than global auth.
-		$sites = Auth::where( [ [ 'site_url', '!=', 'default' ] ] );
+		// Fetch all the auths across all the sites.
+		$sites = Auth::all();
 
 		$formatter = new EE\Formatter( $assoc_args, [ 'site', 'username', 'password' ] );
 
