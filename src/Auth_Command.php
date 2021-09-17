@@ -58,7 +58,7 @@ class Auth_Command extends EE_Command {
 	 *
 	 * [--ip=<ip>]
 	 * : IP to whitelist.
-	 * 
+	 *
 	 * [--show-updated]
 	 * : Shows updated `admin-tools` auth if site-name == admin-tools.
 	 *
@@ -173,17 +173,18 @@ class Auth_Command extends EE_Command {
 	 *
 	 * @return void
 	 */
-	private function admin_tools_create_auth( $assoc_args ) {	
+	private function admin_tools_create_auth( $assoc_args ) {
 		verify_htpasswd_is_present();
-		
-		if ( empty( $assoc_args['user'] ) ) {
-			EE::error( 'Username cannot be empty. See: --user' );
+
+		$user = EE\Utils\get_flag_value( $assoc_args, 'user' );
+
+		if ( ! $user ) {
+			EE::error( 'Please provide auth user with --user flag' );
 			return;
 		} // no random usernames allowed.
 
-		$user              = $assoc_args['user'];
-		$pass              = $assoc_args['pass'] ?? EE\Utils\random_password(); // if no password specified, use rand.
-		$show_updated_auth = $assoc_args['show-updated'] ?? false; // prints updated auth list.
+		$pass = EE\Utils\get_flag_value( $assoc_args, 'pass', EE\Utils\random_password() );
+		$show_updated_auth = EE\Utils\get_flag_value( $assoc_args, 'show-updated', false ); // prints updated auth list.
 
 
 		// prepare data to be passed to create().
@@ -202,9 +203,9 @@ class Auth_Command extends EE_Command {
 		EE::success( 'Added auth to `admin-tools`' );
 		EE::line( sprintf( 'Username: %s', $user ) );
 		EE::line( sprintf( 'Password: %s', $pass ) );
-		EE::line( '+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+' );
-		
+
 		if ( $show_updated_auth ) {
+			EE::line( '+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+' );
 			EE::run_command( array( 'auth', 'list', 'admin-tools' ) );
 		}
 	}
@@ -270,6 +271,15 @@ class Auth_Command extends EE_Command {
 
 		$admin_tools_auth = Auth::get_global_admin_tools_auth();
 		EE::warning( $site_url );
+
+		/**
+		 * @todo
+		 * This is hard-coded. 
+		 * This changes the first auth of `admin-tools` to `default`.
+		 * Hence, breaking the functionality of `list` command.
+		 * 
+		 * IMO, `global` and `admin-tools` should have a distinct scope. 
+		 */
 		if ( 'default' === $site_url && ! empty( $admin_tools_auth ) ) {
 			$admin_tools_auth[0]->site_url = 'default';
 			$admin_tools_auth[0]->save();
@@ -372,38 +382,40 @@ class Auth_Command extends EE_Command {
 	 */
 	private function generate_global_auth_files() {
 
-		$global_admin_tools_auth = Auth::get_global_admin_tools_auth();
+		$global_admin_tools_auths = Auth::get_global_admin_tools_auth();
 
-		if ( ! empty( $global_admin_tools_auth ) ) {
-			EE::exec( sprintf( 'docker exec %s htpasswd -bc /etc/nginx/htpasswd/default_admin_tools %s %s', EE_PROXY_TYPE, $global_admin_tools_auth->username, $global_admin_tools_auth->password ) );
-		} else {
-			$this->fs->remove( EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/default_admin_tools' );
-			$this->fs->remove( EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/default' );
-			$auths = Auth::get_global_auths();
-
-			if ( empty( $auths ) ) {
-				$this->regen_admin_tools_auth();
+		foreach ( $global_admin_tools_auths as $global_admin_tools_auth ) {
+			if ( ! empty( $global_admin_tools_auth ) ) {
+				EE::exec( sprintf( 'docker exec %s htpasswd -bc /etc/nginx/htpasswd/default_admin_tools %s %s', EE_PROXY_TYPE, $global_admin_tools_auth->username, $global_admin_tools_auth->password ) );
 			} else {
-				foreach ( $auths as $key => $auth ) {
-					$flags = 'b';
-
-					if ( 0 === $key ) {
-						$flags = 'bc';
+				$this->fs->remove( EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/default_admin_tools' );
+				$this->fs->remove( EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/default' );
+				$auths = Auth::get_global_auths();
+	
+				if ( empty( $auths ) ) {
+					$this->regen_admin_tools_auth();
+				} else {
+					foreach ( $auths as $key => $auth ) {
+						$flags = 'b';
+	
+						if ( 0 === $key ) {
+							$flags = 'bc';
+						}
+	
+						EE::exec( sprintf( 'docker exec %s htpasswd -%s /etc/nginx/htpasswd/default %s %s', EE_PROXY_TYPE, $flags, $auth->username, $auth->password ) );
 					}
-
-					EE::exec( sprintf( 'docker exec %s htpasswd -%s /etc/nginx/htpasswd/default %s %s', EE_PROXY_TYPE, $flags, $auth->username, $auth->password ) );
 				}
-			}
-
-			$sites = array_unique(
-				array_column(
-					Auth::all( array( 'site_url' ) ),
-					'site_url'
-				)
-			);
-
-			foreach ( $sites as $site ) {
-				$this->generate_site_auth_files( $site );
+	
+				$sites = array_unique(
+					array_column(
+						Auth::all( array( 'site_url' ) ),
+						'site_url'
+					)
+				);
+	
+				foreach ( $sites as $site ) {
+					$this->generate_site_auth_files( $site );
+				}
 			}
 		}
 	}
@@ -533,8 +545,12 @@ class Auth_Command extends EE_Command {
 	 *     $ ee auth update global --ip=8.8.8.8,1.1.1.1
 	 */
 	public function update( $args, $assoc_args ) {
-
 		verify_htpasswd_is_present();
+
+		if ( ! empty( $args[0] ) && 'admin-tools' === $args[0] ) {
+			$this->admin_tools_update_auth( $assoc_args );
+			return;
+		}
 
 		$global   = $this->populate_info( $args, __FUNCTION__ );
 		$site_url = $global ? 'default' : $this->site_data->site_url;
@@ -545,6 +561,28 @@ class Auth_Command extends EE_Command {
 		} else {
 			$this->update_auth( $assoc_args, $site_url );
 		}
+	}
+
+	private function admin_tools_update_auth( $assoc_args ) {
+		$user = EE\Utils\get_flag_value( $assoc_args, 'user' );
+
+		if ( !$user ) {
+			EE::error( 'Please provide auth user with --user flag' );
+		}
+
+		$pass = EE\Utils\get_flag_value( $assoc_args, 'pass', EE\Utils\random_password() ); // user a random password if no password is supplied.
+
+		// get all the current occurences of the username.
+		$auths = $this->get_auths( 'default_admin_tools', $user );
+
+		foreach( $auths as $auth ) {
+			$auth->password = $pass;
+			$auth->save();
+		} // update each occurence of the username with a new
+
+		$this->generate_global_auth_files(); // renew htpasswd file.
+
+		EE::success( sprintf( 'Auth for %s successfully updated.', $user, $pass ) );
 	}
 
 	/**
