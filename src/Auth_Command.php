@@ -17,11 +17,13 @@
 use EE\Model\Auth;
 use EE\Model\Whitelist;
 use EE\Model\Site;
+use EE\Model\Option;
 use Symfony\Component\Filesystem\Filesystem;
 use function EE\Auth\Utils\verify_htpasswd_is_present;
 use function EE\Site\Utils\auto_site_name;
 use function EE\Site\Utils\get_site_info;
 use function EE\Site\Utils\reload_global_nginx_proxy;
+// use function EE\Service\Utils\ensure_global_network_initialized;
 
 class Auth_Command extends EE_Command {
 
@@ -46,7 +48,7 @@ class Auth_Command extends EE_Command {
 	 * ## OPTIONS
 	 *
 	 * [<site-name>]
-	 * : Name of website / `global` for global scope.
+	 * : Name of website / `global` for global scope / 'admin-tools' for admin-tools.
 	 *
 	 * [--user=<user>]
 	 * : Username for http auth.
@@ -56,6 +58,9 @@ class Auth_Command extends EE_Command {
 	 *
 	 * [--ip=<ip>]
 	 * : IP to whitelist.
+	 * 
+	 * [--show-updated]
+	 * : Shows updated `admin-tools` auth if site-name == admin-tools.
 	 *
 	 * ## EXAMPLES
 	 *
@@ -81,6 +86,11 @@ class Auth_Command extends EE_Command {
 
 		verify_htpasswd_is_present();
 
+		if ( 'admin-tools' === $args[0] ) {
+			$this->admin_tools_create_auth( $assoc_args );
+			return;
+		}
+
 		$global   = $this->populate_info( $args, __FUNCTION__ );
 		$ips      = \EE\Utils\get_flag_value( $assoc_args, 'ip' );
 		$site_url = $global ? 'default' : $this->site_data->site_url;
@@ -96,24 +106,24 @@ class Auth_Command extends EE_Command {
 	 * Creates http authentication for all the available.
 	 *
 	 * ## OPTIONS
-	 * 
+	 *
 	 * [--user=<user>]
 	 * : Username for http auth.
 	 *
 	 * [--pass=<pass>]
 	 * : Password for http auth.
-	 * 
+	 *
 	 * [--ignore-existing]
 	 * : Ignores the sites which already have the user added.
 	 *
 	 * [--silent]
 	 * : Does not make a fuss.
-	 * 
+	 *
 	 * ## EXAMPLES
 	 *
 	 *     # Add auth on all sites with predefined username and password
 	 *     $ ee auth all-sites --user=test --pass=password
-	 * 
+	 *
 	 * @subcommand all-sites
 	 */
 	public function all_sites( $args, $assoc_args ) {
@@ -130,18 +140,18 @@ class Auth_Command extends EE_Command {
 			return;
 		}
 
-		$sites = Site::all(); 
+		$sites = Site::all();
 
 		// run through all the available sites.
-		foreach( $sites as $site ) {
-			$query_conditions = [
+		foreach ( $sites as $site ) {
+			$query_conditions = array(
 				'site_url' => $site->site_url,
 				'username' => $user,
-			];
+			);
 
 			$existing_auths = Auth::where( $query_conditions );
 
-			if ( ! empty( $existing_auths ) && $ignore_existing) {
+			if ( ! empty( $existing_auths ) && $ignore_existing ) {
 				$silent ? '' : EE::warning( sprintf( '`%1$s` already exists on `%2$s`. Ignoring...', $user, $site->site_url ) );
 				$silent ? '' : EE::line( '+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+' );
 				continue;
@@ -154,6 +164,8 @@ class Auth_Command extends EE_Command {
 			$silent ? '' : EE::line( '+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+' );
 		}
 	}
+
+
 
 	/**
 	 * Cleans and Validate IP addresses
@@ -185,8 +197,8 @@ class Auth_Command extends EE_Command {
 	/**
 	 * Creates http auth
 	 *
-	 * @param array $assoc_args Assoc args passed to command
-	 * @param bool $global      Enable auth on global
+	 * @param array  $assoc_args Assoc args passed to command
+	 * @param bool   $global      Enable auth on global
 	 * @param string $site_url  URL of site
 	 *
 	 * @throws Exception
@@ -194,16 +206,16 @@ class Auth_Command extends EE_Command {
 	private function create_auth( array $assoc_args, bool $global, string $site_url ) {
 		$user      = \EE\Utils\get_flag_value( $assoc_args, 'user', 'ee-' . EE\Utils\random_password( 6 ) );
 		$pass      = \EE\Utils\get_flag_value( $assoc_args, 'pass', EE\Utils\random_password() );
-		$auth_data = [
+		$auth_data = array(
 			'site_url' => $site_url,
 			'username' => $user,
 			'password' => $pass,
-		];
+		);
 
-		$query_conditions = [
+		$query_conditions = array(
 			'site_url' => $site_url,
 			'username' => $user,
-		];
+		);
 
 		$query_conditions['username'] = $user;
 		$error_message                = "Auth for user $user already exists for this site. To update it, use `ee auth update`'";
@@ -215,6 +227,7 @@ class Auth_Command extends EE_Command {
 		}
 
 		$admin_tools_auth = Auth::get_global_admin_tools_auth();
+		EE::warning( $site_url );
 		if ( 'default' === $site_url && ! empty( $admin_tools_auth ) ) {
 			$admin_tools_auth[0]->site_url = 'default';
 			$admin_tools_auth[0]->save();
@@ -254,10 +267,10 @@ class Auth_Command extends EE_Command {
 
 		foreach ( $user_ips as $ip ) {
 			Whitelist::create(
-				[
+				array(
 					'site_url' => $site_url,
 					'ip'       => $ip,
-				]
+				)
 			);
 		}
 
@@ -282,9 +295,9 @@ class Auth_Command extends EE_Command {
 
 		$global = false;
 		if ( isset( $args[0] ) && 'global' === $args[0] ) {
-			$this->site_data = (object) [
+			$this->site_data = (object) array(
 				'site_url' => $args[0],
-			];
+			);
 			$global          = true;
 		} else {
 			$args            = auto_site_name( $args, 'auth', $command );
@@ -296,6 +309,7 @@ class Auth_Command extends EE_Command {
 
 	/**
 	 * Regenerate admin-tools auth if needed when global auth is deleted.
+	 *
 	 * @throws Exception
 	 * @throws \EE\ExitException
 	 */
@@ -341,7 +355,7 @@ class Auth_Command extends EE_Command {
 
 			$sites = array_unique(
 				array_column(
-					Auth::all( [ 'site_url' ] ),
+					Auth::all( array( 'site_url' ) ),
 					'site_url'
 				)
 			);
@@ -388,7 +402,7 @@ class Auth_Command extends EE_Command {
 
 		$sites = array_unique(
 			array_column(
-				Whitelist::all( [ 'site_url' ] ),
+				Whitelist::all( array( 'site_url' ) ),
 				'site_url'
 			)
 		);
@@ -475,7 +489,6 @@ class Auth_Command extends EE_Command {
 	 *
 	 *     # Update whitelisted IPs on all sites
 	 *     $ ee auth update global --ip=8.8.8.8,1.1.1.1
-	 *
 	 */
 	public function update( $args, $assoc_args ) {
 
@@ -483,7 +496,7 @@ class Auth_Command extends EE_Command {
 
 		$global   = $this->populate_info( $args, __FUNCTION__ );
 		$site_url = $global ? 'default' : $this->site_data->site_url;
-		$ips       = EE\Utils\get_flag_value( $assoc_args, 'ip' );
+		$ips      = EE\Utils\get_flag_value( $assoc_args, 'ip' );
 
 		if ( $ips ) {
 			$this->update_whitelist( $site_url, $ips );
@@ -541,10 +554,10 @@ class Auth_Command extends EE_Command {
 
 		foreach ( $user_ips as $ip ) {
 			$existing_ips = Whitelist::where(
-				[
+				array(
 					'site_url' => $site_url,
 					'ip'       => $ip,
-				]
+				)
 			);
 
 			if ( ! empty( $existing_ips ) ) {
@@ -553,10 +566,10 @@ class Auth_Command extends EE_Command {
 			}
 
 			Whitelist::create(
-				[
+				array(
 					'site_url' => $site_url,
 					'ip'       => $ip,
-				]
+				)
 			);
 		}
 
@@ -582,9 +595,9 @@ class Auth_Command extends EE_Command {
 	 */
 	private function get_auths( $site_url, $user, $error_if_empty = true ) {
 
-		$where_conditions = [
+		$where_conditions = array(
 			'site_url' => $site_url,
-		];
+		);
 
 		$user_error_msg = '';
 		if ( $user ) {
@@ -611,13 +624,13 @@ class Auth_Command extends EE_Command {
 	 *
 	 * [<site-name>]
 	 * : Name of website / `global` for global scope.
-	 * 
+	 *
 	 * [<all-sites>]
 	 * : Delete authentication on all sites.
 	 *
 	 * [--user=<user>]
 	 * : Username that needs to be deleted.
-	 * 
+	 *
 	 * [--pass=<pass>]
 	 * : Username with this password that needs to be deleted.
 	 *
@@ -643,13 +656,12 @@ class Auth_Command extends EE_Command {
 	 *
 	 *     # Remove whitelisted IPs on all sites
 	 *     $ ee auth delete global --ip=1.1.1.1
-	 *
 	 */
 	public function delete( $args, $assoc_args ) {
 
 		verify_htpasswd_is_present();
 
-		if ( 'all-sites' === $args[0] ) { 
+		if ( 'all-sites' === $args[0] ) {
 			$this->delete_all( $assoc_args );
 			return;
 		}
@@ -659,7 +671,7 @@ class Auth_Command extends EE_Command {
 		$ip       = EE\Utils\get_flag_value( $assoc_args, 'ip' );
 
 		if ( ! $ip ) {
-			$user = EE\Utils\get_flag_value( $assoc_args, 'user' );
+			$user  = EE\Utils\get_flag_value( $assoc_args, 'user' );
 			$auths = $this->get_auths( $site_url, $user );
 
 			foreach ( $auths as $auth ) {
@@ -684,9 +696,11 @@ class Auth_Command extends EE_Command {
 		} else {
 
 			if ( true === $ip ) {
-				$whitelists = Whitelist::where( [
-					'site_url' => $site_url,
-				] );
+				$whitelists = Whitelist::where(
+					array(
+						'site_url' => $site_url,
+					)
+				);
 
 				foreach ( $whitelists as $whitelist ) {
 					$whitelist->delete();
@@ -696,10 +710,10 @@ class Auth_Command extends EE_Command {
 
 				foreach ( $user_ips as $ip ) {
 					$existing_ips = Whitelist::where(
-						[
+						array(
 							'site_url' => $site_url,
 							'ip'       => $ip,
-						]
+						)
 					);
 
 					if ( empty( $existing_ips ) ) {
@@ -708,10 +722,10 @@ class Auth_Command extends EE_Command {
 					}
 
 					$whitelist = Whitelist::where(
-						[
+						array(
 							'site_url' => $site_url,
 							'ip'       => $ip,
-						]
+						)
 					);
 
 					$whitelist[0]->delete();
@@ -727,7 +741,7 @@ class Auth_Command extends EE_Command {
 			reload_global_nginx_proxy();
 		}
 	}
-	
+
 	/**
 	 * Deletes authentication on all the sites (matching a criteria)
 	 *
@@ -762,7 +776,7 @@ class Auth_Command extends EE_Command {
 			return;
 		}
 
-		foreach( $sites as $site ) {
+		foreach ( $sites as $site ) {
 			if ( 'default_admin_tools' === $site->site_url ) {
 				continue;
 			}
@@ -809,9 +823,12 @@ class Auth_Command extends EE_Command {
 	 *
 	 *     # List all global auth
 	 *     $ ee auth list global
-	 *
 	 */
 	public function list( $args, $assoc_args ) {
+		if ( ! empty( $args[0]) && 'admin-tools' === $args[0] ) {
+			$this->admin_tools_list_auth();
+			return;
+		}
 
 		$global   = $this->populate_info( $args, __FUNCTION__ );
 		$site_url = $global ? 'default' : $this->site_data->site_url;
@@ -820,7 +837,7 @@ class Auth_Command extends EE_Command {
 		if ( $ip ) {
 			$whitelists = Whitelist::where( 'site_url', $site_url );
 
-			$formatter = new EE\Formatter( $assoc_args, [ 'ip' ] );
+			$formatter = new EE\Formatter( $assoc_args, array( 'ip' ) );
 			$formatter->display_items( $whitelists );
 		} else {
 			$log_msg          = '';
@@ -843,7 +860,7 @@ class Auth_Command extends EE_Command {
 				if ( empty( $auths ) ) {
 					EE::warning( sprintf( 'Auth does not exists on %s', $site_url ) );
 				} else {
-					$formatter = new EE\Formatter( $assoc_args, [ 'username', 'password' ] );
+					$formatter = new EE\Formatter( $assoc_args, array( 'username', 'password' ) );
 					$formatter->display_items( $auths );
 				}
 			}
@@ -851,10 +868,62 @@ class Auth_Command extends EE_Command {
 				EE::log( PHP_EOL . $log_msg );
 			}
 			if ( ! empty( $auths_global ) ) {
-				$formatter = new EE\Formatter( $assoc_args, [ 'username', 'password' ] );
+				$formatter = new EE\Formatter( $assoc_args, array( 'username', 'password' ) );
 				$formatter->display_items( $auths_global );
 			}
 		}
+	}
+	
+	/**
+	 * Helper function for ee auth create admin-tools
+	 * Creates auth for `default_admin_tools`
+	 *
+	 * @param array $assoc_argsassoc arguments passed to ee auth create
+	 *
+	 * @return void
+	 */
+	private function admin_tools_create_auth( $assoc_args ) {	
+		verify_htpasswd_is_present();
+		
+		if ( empty( $assoc_args['user'] ) ) {
+			EE::error( 'Username cannot be empty. See: --user' );
+			return;
+		} // no random usernames allowed.
+
+		$user              = $assoc_args['user'];
+		$pass              = $assoc_args['pass'] ?? EE\Utils\random_password(); // if no password specified, use rand.
+		$show_updated_auth = $assoc_args['show-updated'] ?? false; // prints updated auth list.
+
+
+		// prepare data to be passed to create().
+		$columns = array(
+			'site_url' => 'default_admin_tools',
+			'username' => $user,
+			'password' => $pass,
+		);
+
+		// Use create() with site_url='default_admin_tools'.
+		// \EE\Model\Auth::create( $columns );
+
+		// Prepare and execute command to create updated htpasswd file.
+		// EE::exec( sprintf( 'docker exec %s htpasswd -bc /etc/nginx/htpasswd/default_admin_tools %s %s', EE_PROXY_TYPE, $user, $pass ) );
+
+		EE::success( 'Added auth to `admin-tools`' );
+
+		if ( $show_updated_auth ) {
+			EE::line( 'Updated auth list: ' );
+			EE::run_command( array( 
+				'auth',
+				'list',
+				'admin-tools',
+				) 
+			);
+		}
+	}
+
+	private function admin_tools_list_auth() {
+		$curr_admin_tools_auths = Auth::get_global_admin_tools_auth();
+		print_r( $curr_admin_tools_auths );
 	}
 }
 

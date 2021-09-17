@@ -30,11 +30,11 @@ function init_global_admin_tools_auth( $display_log = true ) {
 	verify_htpasswd_is_present();
 
 	$pass      = \EE\Utils\random_password();
-	$auth_data = [
+	$auth_data = array(
 		'site_url' => 'default_admin_tools',
 		'username' => 'easyengine',
 		'password' => $pass,
-	];
+	);
 
 	Auth::create( $auth_data );
 
