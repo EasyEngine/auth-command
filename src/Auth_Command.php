@@ -799,7 +799,7 @@ class Auth_Command extends EE_Command {
 	 * ## OPTIONS
 	 *
 	 * [<site-name>]
-	 * : Name of website / `global` for global scope.
+	 * : Name of website / `global` for global scope / 'admin-tools' for admin tool auths only.
 	 *
 	 * [--ip]
 	 * : Show whitelisted IPs of site.
@@ -903,27 +903,40 @@ class Auth_Command extends EE_Command {
 		);
 
 		// Use create() with site_url='default_admin_tools'.
-		// \EE\Model\Auth::create( $columns );
+		\EE\Model\Auth::create( $columns );
 
 		// Prepare and execute command to create updated htpasswd file.
-		// EE::exec( sprintf( 'docker exec %s htpasswd -bc /etc/nginx/htpasswd/default_admin_tools %s %s', EE_PROXY_TYPE, $user, $pass ) );
+		EE::exec( sprintf( 'docker exec %s htpasswd -bc /etc/nginx/htpasswd/default_admin_tools %s %s', EE_PROXY_TYPE, $user, $pass ) );
 
 		EE::success( 'Added auth to `admin-tools`' );
-
+		EE::line( sprintf( 'Username: %s', $user ) );
+		EE::line( sprintf( 'Password: %s', $pass ) );
+		EE::line( '+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+' );
+		
 		if ( $show_updated_auth ) {
-			EE::line( 'Updated auth list: ' );
-			EE::run_command( array( 
-				'auth',
-				'list',
-				'admin-tools',
-				) 
-			);
+			EE::run_command( array( 'auth', 'list', 'admin-tools' ) );
 		}
 	}
-
+	
+	/**
+	 * Helper function for ee auth list admin-tools.
+	 * Prints all the auths on site_name=default_admin_tools.
+	 *
+	 * @return void
+	 */
 	private function admin_tools_list_auth() {
-		$curr_admin_tools_auths = Auth::get_global_admin_tools_auth();
-		print_r( $curr_admin_tools_auths );
+		$auths = $this->get_auths( 'default_admin_tools', false, false );
+
+		if ( empty( $auths ) ) {
+			EE::warning( sprintf( 'Auth does not exists on `default_admin_tools`' ) );
+		} else {
+			EE::line( 'Following auth exists on admin-tools (default_admin_tools):' );
+			$formatter = new EE\Formatter( $assoc_args, array( 'username', 'password' ) );
+			$formatter->display_items( $auths );
+		}
+		if ( ! empty( $log_msg ) ) {
+			EE::log( PHP_EOL . $log_msg );
+		}
 	}
 }
 
