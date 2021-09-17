@@ -747,15 +747,24 @@ class Auth_Command extends EE_Command {
 	 * @throws Exception
 	 */
 	private function display_all_auths() {
-		
+
+		$data = array();
+
+		// To store auth data in hash table form  ('key' as 'site url' and 'value' as 'array of credentials').
+		// It will group all the auths for a particular site together.
 		$hash_table = array();
-		$sites      = Auth::where( [ [ 'site_url', '!=', 'default' ] ] );
-		$formatter  = new EE\Formatter( $assoc_args, [ 'site', 'username', 'password' ] );
+
+		// Fetch all the auths across all the sites other than global auth.
+		$sites = Auth::where( [ [ 'site_url', '!=', 'default' ] ] );
+
+		$formatter = new EE\Formatter( $assoc_args, [ 'site', 'username', 'password' ] );
 
 		foreach ( $sites as $site ) {
 
+			// Check if this is first occurrence of site.
 			if ( ! isset( $hash_table[ $site->site_url ] ) ) {
 
+				// If yes then it will create a new 'key' named 'site_url'.
 				$hash_table[ $site->site_url ] = array(
 					array(
 						'username' => $site->username,
@@ -773,8 +782,8 @@ class Auth_Command extends EE_Command {
 				array_push( $hash_table[ $site->site_url ], $new_entry );
 			}
 		}
-		$data = array();
 
+		// Fetch auth data from hash table and transform it into a simple array.
 		foreach ( $hash_table as $key => $credentials ) {
 
 			$row = array();
