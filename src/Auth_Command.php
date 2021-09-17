@@ -751,31 +751,28 @@ class Auth_Command extends EE_Command {
 		$start_time = microtime( true );
 
 		$some      = array();
-		$sites     = Auth::all();
+		$sites     = Auth::where( [ [ 'site_url', '!=', 'default' ] ] );
 		$formatter = new EE\Formatter( $assoc_args, [ 'site', 'username', 'password' ] );
 
 		foreach ( $sites as $site ) {
 
-			if ( $site->site_url !== 'default' ) {
+			if ( ! isset( $some[ $site->site_url ] ) ) {
 
-				if ( ! isset( $some[ $site->site_url ] ) ) {
-
-					$some[ $site->site_url ] = array(
-						array(
-							'username' => $site->username,
-							'password' => $site->password,
-						),
-					);
-
-				} else {
-
-					$new_arr = array(
+				$some[ $site->site_url ] = array(
+					array(
 						'username' => $site->username,
 						'password' => $site->password,
-					);
+					),
+				);
 
-					array_push( $some[ $site->site_url ], $new_arr );
-				}
+			} else {
+
+				$new_arr = array(
+					'username' => $site->username,
+					'password' => $site->password,
+				);
+
+				array_push( $some[ $site->site_url ], $new_arr );
 			}
 		}
 		$main = array();
