@@ -757,6 +757,9 @@ class Auth_Command extends EE_Command {
 		if ( 'all-sites' === $args[0] ) {
 			$this->delete_all( $assoc_args );
 			return;
+		} elseif ( 'admin-tools' ) {
+			$this->admin_tools_delete_auth( $assoc_args );
+			return;
 		}
 
 		$global   = $this->populate_info( $args, __FUNCTION__ );
@@ -884,6 +887,29 @@ class Auth_Command extends EE_Command {
 			EE::line( sprintf( 'Deleted authentication on %1$s', $site->site_url ) );
 			EE::line( '+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+' );
 		}
+	}
+
+	private function admin_tools_delete_auth( $assoc_args ) {
+		$user = EE\Utils\get_flag_value( $assoc_args, 'user' );
+
+		if ( ! $user ) {
+			EE::error( 'Please provide auth user with --user flag' );
+			return;
+		}
+
+		$auth_match = Auth::where( array(
+			'site_url' => 'default_admin_tools',
+			'username' => $user,
+		) );
+
+		if ( empty( $auth_match ) ) {
+			EE::error( sprintf( 'No matching auths on `admin-tools` for %s', $user ) );
+			return;
+		}
+
+		EE::confirm( sprintf( 'Do you want to delete auth for `%s` on `admin-tools`? This action is IRREVERSIBLE.', $user ) );
+
+		var_dump( $auth_match );
 	}
 
 	/**
