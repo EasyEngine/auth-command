@@ -562,7 +562,15 @@ class Auth_Command extends EE_Command {
 			$this->update_auth( $assoc_args, $site_url );
 		}
 	}
-
+	
+	/**
+	 * Helper function for ee auth update admin-tools.
+	 * Updates existing auths for admin-tools based on --user.
+	 * 
+	 * @param array $assoc_args assoc arguments passed from the function.
+	 *
+	 * @return void
+	 */
 	private function admin_tools_update_auth( $assoc_args ) {
 		$user = EE\Utils\get_flag_value( $assoc_args, 'user' );
 
@@ -583,6 +591,11 @@ class Auth_Command extends EE_Command {
 		$this->generate_global_auth_files(); // renew htpasswd file.
 
 		EE::success( sprintf( 'Auth for %s successfully updated.', $user, $pass ) );
+		
+		EE::line( 'Updated details:' );
+		$auth = $this->get_auths( 'default_admin_tools', $user, false );
+		$formatter = new EE\Formatter( $assoc_args, array( 'username', 'password' ) );
+		$formatter->display_items( $auths );
 	}
 
 	/**
