@@ -747,18 +747,16 @@ class Auth_Command extends EE_Command {
 	 * @throws Exception
 	 */
 	private function display_all_auths() {
-
-		$start_time = microtime( true );
-
-		$some      = array();
-		$sites     = Auth::where( [ [ 'site_url', '!=', 'default' ] ] );
-		$formatter = new EE\Formatter( $assoc_args, [ 'site', 'username', 'password' ] );
+		
+		$hash_table = array();
+		$sites      = Auth::where( [ [ 'site_url', '!=', 'default' ] ] );
+		$formatter  = new EE\Formatter( $assoc_args, [ 'site', 'username', 'password' ] );
 
 		foreach ( $sites as $site ) {
 
-			if ( ! isset( $some[ $site->site_url ] ) ) {
+			if ( ! isset( $hash_table[ $site->site_url ] ) ) {
 
-				$some[ $site->site_url ] = array(
+				$hash_table[ $site->site_url ] = array(
 					array(
 						'username' => $site->username,
 						'password' => $site->password,
@@ -767,39 +765,33 @@ class Auth_Command extends EE_Command {
 
 			} else {
 
-				$new_arr = array(
+				$new_entry = array(
 					'username' => $site->username,
 					'password' => $site->password,
 				);
 
-				array_push( $some[ $site->site_url ], $new_arr );
+				array_push( $hash_table[ $site->site_url ], $new_entry );
 			}
 		}
-		$main = array();
+		$data = array();
 
-		foreach ( $some as $key => $value ) {
+		foreach ( $hash_table as $key => $credentials ) {
 
-			$complete         = array();
-			$complete['site'] = $key;
+			$row = array();
 
-			foreach ( $value as $v ) {
+			$row['site'] = $key;
 
-				$complete['username'] = $v['username'];
-				$complete['password'] = $v['password'];
+			foreach ( $credentials as $credential ) {
 
-				array_push( $main, $complete );
+				$row['username'] = $credential['username'];
+				$row['password'] = $credential['password'];
+
+				array_push( $data, $row );
 
 			}
 		}
 
-		$formatter->display_items( $main );
-
-		$end_time       = microtime( true );
-		$execution_time = ( $end_time - $start_time );
-
-		echo ' Execution time of script = ' . $execution_time . ' sec';
-
-
+		$formatter->display_items( $data );
 	}
 
 }
