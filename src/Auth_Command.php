@@ -165,7 +165,49 @@ class Auth_Command extends EE_Command {
 		}
 	}
 
+	/**
+	 * Helper function for ee auth create admin-tools
+	 * Creates auth for `default_admin_tools`
+	 *
+	 * @param array $assoc_argsassoc arguments passed to ee auth create
+	 *
+	 * @return void
+	 */
+	private function admin_tools_create_auth( $assoc_args ) {	
+		verify_htpasswd_is_present();
+		
+		if ( empty( $assoc_args['user'] ) ) {
+			EE::error( 'Username cannot be empty. See: --user' );
+			return;
+		} // no random usernames allowed.
 
+		$user              = $assoc_args['user'];
+		$pass              = $assoc_args['pass'] ?? EE\Utils\random_password(); // if no password specified, use rand.
+		$show_updated_auth = $assoc_args['show-updated'] ?? false; // prints updated auth list.
+
+
+		// prepare data to be passed to create().
+		$columns = array(
+			'site_url' => 'default_admin_tools',
+			'username' => $user,
+			'password' => $pass,
+		);
+
+		// Use create() with site_url='default_admin_tools'.
+		\EE\Model\Auth::create( $columns );
+
+		// Prepare and execute command to create updated htpasswd file.
+		EE::exec( sprintf( 'docker exec %s htpasswd -bc /etc/nginx/htpasswd/default_admin_tools %s %s', EE_PROXY_TYPE, $user, $pass ) );
+
+		EE::success( 'Added auth to `admin-tools`' );
+		EE::line( sprintf( 'Username: %s', $user ) );
+		EE::line( sprintf( 'Password: %s', $pass ) );
+		EE::line( '+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+' );
+		
+		if ( $show_updated_auth ) {
+			EE::run_command( array( 'auth', 'list', 'admin-tools' ) );
+		}
+	}
 
 	/**
 	 * Cleans and Validate IP addresses
@@ -873,51 +915,7 @@ class Auth_Command extends EE_Command {
 			}
 		}
 	}
-	
-	/**
-	 * Helper function for ee auth create admin-tools
-	 * Creates auth for `default_admin_tools`
-	 *
-	 * @param array $assoc_argsassoc arguments passed to ee auth create
-	 *
-	 * @return void
-	 */
-	private function admin_tools_create_auth( $assoc_args ) {	
-		verify_htpasswd_is_present();
-		
-		if ( empty( $assoc_args['user'] ) ) {
-			EE::error( 'Username cannot be empty. See: --user' );
-			return;
-		} // no random usernames allowed.
 
-		$user              = $assoc_args['user'];
-		$pass              = $assoc_args['pass'] ?? EE\Utils\random_password(); // if no password specified, use rand.
-		$show_updated_auth = $assoc_args['show-updated'] ?? false; // prints updated auth list.
-
-
-		// prepare data to be passed to create().
-		$columns = array(
-			'site_url' => 'default_admin_tools',
-			'username' => $user,
-			'password' => $pass,
-		);
-
-		// Use create() with site_url='default_admin_tools'.
-		\EE\Model\Auth::create( $columns );
-
-		// Prepare and execute command to create updated htpasswd file.
-		EE::exec( sprintf( 'docker exec %s htpasswd -bc /etc/nginx/htpasswd/default_admin_tools %s %s', EE_PROXY_TYPE, $user, $pass ) );
-
-		EE::success( 'Added auth to `admin-tools`' );
-		EE::line( sprintf( 'Username: %s', $user ) );
-		EE::line( sprintf( 'Password: %s', $pass ) );
-		EE::line( '+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+' );
-		
-		if ( $show_updated_auth ) {
-			EE::run_command( array( 'auth', 'list', 'admin-tools' ) );
-		}
-	}
-	
 	/**
 	 * Helper function for ee auth list admin-tools.
 	 * Prints all the auths on site_name=default_admin_tools.
