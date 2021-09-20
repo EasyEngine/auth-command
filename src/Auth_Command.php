@@ -17,14 +17,15 @@
 use EE\Model\Auth;
 use EE\Model\Whitelist;
 use EE\Model\Site;
-use EE\Model\Option;
 use Symfony\Component\Filesystem\Filesystem;
 use function EE\Auth\Utils\verify_htpasswd_is_present;
 use function EE\Site\Utils\auto_site_name;
 use function EE\Site\Utils\get_site_info;
 use function EE\Site\Utils\reload_global_nginx_proxy;
-// use function EE\Service\Utils\ensure_global_network_initialized;
 
+/**
+ * Class Auth_Command
+ */
 class Auth_Command extends EE_Command {
 
 	/**
@@ -48,7 +49,7 @@ class Auth_Command extends EE_Command {
 	 * ## OPTIONS
 	 *
 	 * [<site-name>]
-	 * : Name of website / `global` for global scope / 'admin-tools' for admin-tools.
+	 * : Name of website / `global` for global scope / 'admin-tools' for default_admin_tools.
 	 *
 	 * [--user=<user>]
 	 * : Username for http auth.
@@ -60,7 +61,7 @@ class Auth_Command extends EE_Command {
 	 * : IP to whitelist.
 	 *
 	 * [--show-updated]
-	 * : Shows updated `admin-tools` auth if site-name == admin-tools.
+	 * : Shows updated `admin-tools` auth (if site-name == admin-tools).
 	 *
 	 * ## EXAMPLES
 	 *
@@ -76,6 +77,12 @@ class Auth_Command extends EE_Command {
 	 *     # Add auth on site with default username and random password
 	 *     $ ee auth create example.com --pass=password
 	 *
+	 *     # Add auth on admin-tools with username and random password
+	 *     $ ee auth create admin-tools --user=test
+	 *
+	 *     # Add auth on admin-tools with username and password
+	 *     $ ee auth create admin-tools --user=password
+	 * 
 	 *     # Whitelist IP on site
 	 *     $ ee auth create example.com --ip=8.8.8.8,1.1.1.1
 	 *
@@ -103,7 +110,7 @@ class Auth_Command extends EE_Command {
 	}
 
 	/**
-	 * Creates http authentication for all the available.
+	 * Creates http authentication for all the available sites.
 	 *
 	 * ## OPTIONS
 	 *
@@ -153,23 +160,20 @@ class Auth_Command extends EE_Command {
 
 			if ( ! empty( $existing_auths ) && $ignore_existing ) {
 				$silent ? '' : EE::warning( sprintf( '`%1$s` already exists on `%2$s`. Ignoring...', $user, $site->site_url ) );
-				$silent ? '' : EE::line( '+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+' );
 				continue;
 			}
 
 			$silent ? '' : EE::line( sprintf( 'Adding auth to %s', $site->site_url ) );
 
 			$this->create_auth( $assoc_args, 'default', $site->site_url );
-
-			$silent ? '' : EE::line( '+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+' );
 		}
 	}
 
 	/**
-	 * Helper function for ee auth create admin-tools
+	 * Helper function for `ee auth create admin-tools`
 	 * Creates auth for `default_admin_tools`
 	 *
-	 * @param array $assoc_argsassoc arguments passed to ee auth create
+	 * @param array $assoc_argsassoc arguments passed to ee auth create.
 	 *
 	 * @return void
 	 */
@@ -205,7 +209,6 @@ class Auth_Command extends EE_Command {
 		EE::line( sprintf( 'Password: %s', $pass ) );
 
 		if ( $show_updated_auth ) {
-			EE::line( '+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+' );
 			EE::run_command( array( 'auth', 'list', 'admin-tools' ) );
 		}
 	}
@@ -272,14 +275,6 @@ class Auth_Command extends EE_Command {
 		$admin_tools_auth = Auth::get_global_admin_tools_auth();
 		EE::warning( $site_url );
 
-		/**
-		 * @todo
-		 * This is hard-coded. 
-		 * This changes the first auth of `admin-tools` to `default`.
-		 * Hence, breaking the functionality of `list` command.
-		 * 
-		 * IMO, `global` and `admin-tools` should have a distinct scope. 
-		 */
 		if ( 'default' === $site_url && ! empty( $admin_tools_auth ) ) {
 			$admin_tools_auth[0]->site_url = 'default';
 			$admin_tools_auth[0]->save();
@@ -388,7 +383,7 @@ class Auth_Command extends EE_Command {
 		if ( $clean_admin_auths ) {
 			$this->fs->remove( EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/default_admin_tools' );
 			EE::warning( 'Cleaned htpasswd at ' . EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/default_admin_tools' );
-		}
+		} // Clean the existing `admin-tools` auth for proper synchronization.
 
 		foreach ( $global_admin_tools_auths as $global_admin_tools_auth ) {
 			if ( ! empty( $global_admin_tools_auth ) ) {
@@ -525,7 +520,7 @@ class Auth_Command extends EE_Command {
 	 * ## OPTIONS
 	 *
 	 * [<site-name>]
-	 * : Name of website / `global` for global auth.
+	 * : Name of website / `global` for global auth / `admin-tools` for default_admin_tools.
 	 *
 	 * [--user=<user>]
 	 * : Username for http auth.
@@ -543,6 +538,12 @@ class Auth_Command extends EE_Command {
 	 *
 	 *     # Update auth password on site with predefined username and password
 	 *     $ ee auth update example.com --user=test --pass=password
+	 * 
+	 *     # Update auth password on admin-tools auth with username and random password
+	 *     $ ee auth update admin-tools --user=test
+	 * 
+	 *     # Update auth password on admin-tools with predefined username and password
+	 *     $ ee auth update admin-tools --user=test --pass=password
 	 *
 	 *     # Update whitelisted IPs on site
 	 *     $ ee auth update example.com --ip=8.8.8.8,1.1.1.1
@@ -570,8 +571,8 @@ class Auth_Command extends EE_Command {
 	}
 	
 	/**
-	 * Helper function for ee auth update admin-tools.
-	 * Updates existing auths for admin-tools based on --user.
+	 * Helper function for `ee auth update admin-tools`
+	 * Updates existing auths of admin-tools based for a user
 	 * 
 	 * @param array $assoc_args assoc arguments passed from the function.
 	 *
@@ -584,17 +585,16 @@ class Auth_Command extends EE_Command {
 			EE::error( 'Please provide auth user with --user flag' );
 		}
 
-		$pass = EE\Utils\get_flag_value( $assoc_args, 'pass', EE\Utils\random_password() ); // user a random password if no password is supplied.
+		$pass = EE\Utils\get_flag_value( $assoc_args, 'pass', EE\Utils\random_password() ); // Use a random password if no password is supplied.
 
-		// get all the current occurences of the username.
-		$auths = $this->get_auths( 'default_admin_tools', $user );
+		$auths = $this->get_auths( 'default_admin_tools', $user ); // Get all the current occurences of the username.
 
 		foreach( $auths as $auth ) {
 			$auth->password = $pass;
 			$auth->save();
-		} // update each occurence of the username with a new
+		} // Update each occurence of the username with a newer one.
 
-		$this->generate_global_auth_files(); // renew htpasswd file.
+		$this->generate_global_auth_files(); // Renew htpasswd file.
 
 		EE::success( sprintf( 'Auth for %s successfully updated.', $user, $pass ) );
 		
@@ -722,7 +722,7 @@ class Auth_Command extends EE_Command {
 	 * ## OPTIONS
 	 *
 	 * [<site-name>]
-	 * : Name of website / `global` for global scope.
+	 * : Name of website / `global` for global scope / `admin-tools` for default_admin_tools.
 	 *
 	 * [<all-sites>]
 	 * : Delete authentication on all sites.
@@ -746,6 +746,9 @@ class Auth_Command extends EE_Command {
 	 *
 	 *     # Remove global auth on all sites (but not admin tools) with default username(easyengine)
 	 *     $ ee auth delete global
+	 * 
+	 *     # Remove auth on `admin-tools` with custom username
+	 *     $ ee auth delete admin-tools --user=test
 	 *
 	 *     # Remove specific whitelisted IPs on site
 	 *     $ ee auth delete example.com --ip=1.1.1.1,8.8.8.8
@@ -891,17 +894,24 @@ class Auth_Command extends EE_Command {
 
 			$this->delete( $args, $assoc_args );
 			EE::line( sprintf( 'Deleted authentication on %1$s', $site->site_url ) );
-			EE::line( '+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+' );
 		}
 	}
-
+	
+	/**
+	 * Helper function for `ee auth delete admin-tools --user`
+	 * Deletes `admin-tools` user with a pre-defined username
+	 *
+	 * @param array $assoc_args Assoc arguments passed via the CLI.
+	 *
+	 * @return void
+	 */
 	private function admin_tools_delete_auth( $assoc_args ) {
 		$user = EE\Utils\get_flag_value( $assoc_args, 'user' );
 
 		if ( ! $user ) {
 			EE::error( 'Please provide auth user with --user flag' );
 			return;
-		}
+		} // Output an error if no username is supplied.
 
 		$auth_match = Auth::where( array(
 			'site_url' => 'default_admin_tools',
@@ -911,13 +921,13 @@ class Auth_Command extends EE_Command {
 		if ( empty( $auth_match ) ) {
 			EE::error( sprintf( 'No matching auths on `admin-tools` for %s', $user ) );
 			return;
-		}
+		} // Output an error if no matching auth records are found.
 
 		EE::confirm( sprintf( 'Do you want to delete auth for `%s` on `admin-tools`? This action is IRREVERSIBLE.', $user ) );
 
-		$auth_match[0]->delete();
+		$auth_match[0]->delete(); // Delete the record from `auth_users`.
 
-		$this->generate_global_auth_files( true );
+		$this->generate_global_auth_files( true ); // Renew the htpasswd file.
 
 		$success_message = sprintf( 'Deleted `%s` on admin-tools.', $user );
 		EE::success( $success_message );
@@ -931,7 +941,7 @@ class Auth_Command extends EE_Command {
 	 * ## OPTIONS
 	 *
 	 * [<site-name>]
-	 * : Name of website / `global` for global scope / 'admin-tools' for admin tool auths only.
+	 * : Name of website / `global` for global scope / 'admin-tools' for default_admin_tools.
 	 *
 	 * [--ip]
 	 * : Show whitelisted IPs of site.
@@ -955,6 +965,9 @@ class Auth_Command extends EE_Command {
 	 *
 	 *     # List all global auth
 	 *     $ ee auth list global
+	 * 
+	 *     # List all admin-tools auth
+	 *     $ ee auth list admin-tools
 	 */
 	public function list( $args, $assoc_args ) {
 		if ( ! empty( $args[0]) && 'admin-tools' === $args[0] ) {
@@ -1007,8 +1020,8 @@ class Auth_Command extends EE_Command {
 	}
 
 	/**
-	 * Helper function for ee auth list admin-tools.
-	 * Prints all the auths on site_name=default_admin_tools.
+	 * Helper function for ee auth list admin-tools
+	 * Prints all the auths on site_name=default_admin_tools
 	 *
 	 * @return void
 	 */
@@ -1027,4 +1040,3 @@ class Auth_Command extends EE_Command {
 		}
 	}
 }
-
