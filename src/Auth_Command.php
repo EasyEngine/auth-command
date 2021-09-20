@@ -378,11 +378,17 @@ class Auth_Command extends EE_Command {
 	/**
 	 * Generates auth files for global auth and all sites.
 	 *
+	 * @param bool $clean_admin_auths syncs the auth_user table with htpasswd file (default: false).
 	 * @throws Exception
 	 */
-	private function generate_global_auth_files() {
+	private function generate_global_auth_files( $clean_admin_auths = false ) {
 
 		$global_admin_tools_auths = Auth::get_global_admin_tools_auth();
+
+		if ( $clean_admin_auths ) {
+			$this->fs->remove( EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/default_admin_tools' );
+			EE::warning( 'Cleaned htpasswd at ' . EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/default_admin_tools' );
+		}
 
 		foreach ( $global_admin_tools_auths as $global_admin_tools_auth ) {
 			if ( ! empty( $global_admin_tools_auth ) ) {
@@ -909,7 +915,14 @@ class Auth_Command extends EE_Command {
 
 		EE::confirm( sprintf( 'Do you want to delete auth for `%s` on `admin-tools`? This action is IRREVERSIBLE.', $user ) );
 
-		var_dump( $auth_match );
+		$auth_match[0]->delete();
+
+		$this->generate_global_auth_files( true );
+
+		$success_message = sprintf( 'Deleted `%s` on admin-tools.', $user );
+		EE::success( $success_message );
+		EE::log( 'Reloading global reverse proxy.' );
+		reload_global_nginx_proxy();
 	}
 
 	/**
