@@ -27,17 +27,11 @@ ee auth
        # Delete auth from a site
        $ ee auth delete example.com --user=test
 
-	   # Add auth to all sites
-	   $ ee auth all-sites --user=test --pass=test
+	   # Add auth to admin-tools
+	   $ ee auth create admin-tools --user=test --pass=test
 
-	   # Delete auth from all sites
-	   $ ee auth delete all-sites
-
-	   # Delete auth from all sites with username
-	   $ ee auth delete all-sites --user=test
-
-	   # Delete auth from all sites with username and password
-	   $ ee auth delete all-sites --user=test --pass=test
+	   # Delete auth from admin-tools
+	   $ ee auth delete admin-tools --user=test
 
 
 
@@ -52,7 +46,7 @@ ee auth create [<site-name>] [--user=<user>] [--pass=<pass>] [--ip=<ip>]
 **OPTIONS**
 
 	[<site-name>]
-		Name of website / `global` for global scope.
+		Name of website / `global` for global scope / `admin-tools` for admin-tools.
 
 	[--user=<user>]
 		Username for http auth.
@@ -77,6 +71,12 @@ ee auth create [<site-name>] [--user=<user>] [--pass=<pass>] [--ip=<ip>]
     # Add auth on site with default username and random password
     $ ee auth create example.com --pass=password
 
+	# Add auth on admin-tools with predefined username and random password
+	$ ee auth create admin-tools --user=test
+
+	# Add auth on admin-tools with predefined username and password
+	$ ee auth create admin-tools --user=test -pass=password
+
     # Whitelist IP on site
     $ ee auth create example.com --ip=8.8.8.8,1.1.1.1
 
@@ -84,49 +84,22 @@ ee auth create [<site-name>] [--user=<user>] [--pass=<pass>] [--ip=<ip>]
     $ ee auth create global --ip=8.8.8.8,1.1.1.1
 
 
-### ee auth all-sites
-
-Creates http authentication for all available sites.
-
-~~~
-ee auth all-sites [--user=<user>] [--pass=<pass>]
-~~~
-
-**OPTIONS**
-
-	[--user=<user>]
-		Username for http auth.
-
-	[--pass=<pass>]
-		Password for http auth.
-
-**EXAMPLES**
-
-    # Add auth on all sites with username and password
-    $ ee auth all-sites --user=test --pass=test
-
 
 ### ee auth delete
 
 Deletes http authentication for a site. Default: removes http authentication from site. If `--user` is passed it removes that specific user.
 
 ~~~
-ee auth delete [<site-name>/<all-sites>] [--user=<user>] [--pass=<pass>] [--ip]
+ee auth delete [<site-name>] [--user=<user>] [--pass=<pass>] [--ip]
 ~~~
 
 **OPTIONS**
 
 	[<site-name>]
-		Name of website / `global` for global scope.
-
-	[<all-sites>]
-		Delete auth from all sites available.
+		Name of website / `global` for global scope / `admin-tools` for admin-tools.
 
 	[--user=<user>]
 		Username that needs to be deleted.
-
-	[--user=<user>]
-		Password that needs to be matched while using all-sites.
 
 	[--ip]
 		IP to remove. Default removes all.
@@ -142,14 +115,8 @@ ee auth delete [<site-name>/<all-sites>] [--user=<user>] [--pass=<pass>] [--ip]
     # Remove global auth on all sites (but not admin tools) with default username(easyengine)
     $ ee auth delete global
 
-	# Remove auth on all sites (but not admin tools)
-	$ ee auth delete all-sites
-
-	# Remove auth on all sites (but not admin tools) with username
-	$ ee auth delete all-sites --user=test
-
-	# Remove auth on all sites (but not admin tools) with username and password
-	$ ee auth delete all-sites --user=test --pass=test
+	# Remove auth on admin-tools with specific username
+	$ ee auth delete admin-tools --user=test
 
     # Remove specific whitelisted IPs on site
     $ ee auth delete example.com --ip=1.1.1.1,8.8.8.8
@@ -173,7 +140,7 @@ ee auth list [<site-name>] [--ip] [--format=<format>]
 **OPTIONS**
 
 	[<site-name>]
-		Name of website / `global` for global scope.
+		Name of website / `global` for global scope / `admin-tools` for admin-tools.
 
 	[--ip]
 		Show whitelisted IPs of site.
@@ -198,6 +165,9 @@ ee auth list [<site-name>] [--ip] [--format=<format>]
     # List all global auth
     $ ee auth list global
 
+	# List all admin-tools auth
+	$ ee auth list admin-tools
+
 
 
 ### ee auth update
@@ -211,7 +181,7 @@ ee auth update [<site-name>] [--user=<user>] [--pass=<pass>] [--ip=<ip>]
 **OPTIONS**
 
 	[<site-name>]
-		Name of website / `global` for global auth.
+		Name of website / `global` for global auth / `admin-tools` for admin-tools.
 
 	[--user=<user>]
 		Username for http auth.
@@ -229,6 +199,9 @@ ee auth update [<site-name>] [--user=<user>] [--pass=<pass>] [--ip=<ip>]
 
     # Update auth password on site with predefined username and password
     $ ee auth update example.com --user=test --pass=password
+
+	# Update auth password on admin-tools with predefined username and password
+	$ ee auth update admin-tools --user=test --password=password
 
     # Update whitelisted IPs on site
     $ ee auth update example.com --ip=8.8.8.8,1.1.1.1

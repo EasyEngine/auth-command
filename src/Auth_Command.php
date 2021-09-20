@@ -49,7 +49,7 @@ class Auth_Command extends EE_Command {
 	 * ## OPTIONS
 	 *
 	 * [<site-name>]
-	 * : Name of website / `global` for global scope / 'admin-tools' for default_admin_tools.
+	 * : Name of website / `global` for global scope / 'admin-tools' for admin-tools.
 	 *
 	 * [--user=<user>]
 	 * : Username for http auth.
@@ -110,68 +110,8 @@ class Auth_Command extends EE_Command {
 	}
 
 	/**
-	 * Creates http authentication for all the available sites.
-	 *
-	 * ## OPTIONS
-	 *
-	 * [--user=<user>]
-	 * : Username for http auth.
-	 *
-	 * [--pass=<pass>]
-	 * : Password for http auth.
-	 *
-	 * [--ignore-existing]
-	 * : Ignores the sites which already have the user added.
-	 *
-	 * [--silent]
-	 * : Does not make a fuss.
-	 *
-	 * ## EXAMPLES
-	 *
-	 *     # Add auth on all sites with predefined username and password
-	 *     $ ee auth all-sites --user=test --pass=password
-	 *
-	 * @subcommand all-sites
-	 */
-	public function all_sites( $args, $assoc_args ) {
-		verify_htpasswd_is_present();
-
-		$user            = \EE\Utils\get_flag_value( $assoc_args, 'user' );
-		$passwd          = \EE\Utils\get_flag_value( $assoc_args, 'pass' );
-		$ignore_existing = \EE\Utils\get_flag_value( $assoc_args, 'ignore-existing' );
-		$silent          = \EE\Utils\get_flag_value( $assoc_args, 'silent' );
-
-		// check if username and password is set.
-		if ( empty( $user ) || empty( $passwd ) ) {
-			EE::error( 'Invalid usage. Correct usage: ee auth all_sites --user --pass' );
-			return;
-		}
-
-		$sites = Site::all();
-
-		// run through all the available sites.
-		foreach ( $sites as $site ) {
-			$query_conditions = array(
-				'site_url' => $site->site_url,
-				'username' => $user,
-			);
-
-			$existing_auths = Auth::where( $query_conditions );
-
-			if ( ! empty( $existing_auths ) && $ignore_existing ) {
-				$silent ? '' : EE::warning( sprintf( '`%1$s` already exists on `%2$s`. Ignoring...', $user, $site->site_url ) );
-				continue;
-			}
-
-			$silent ? '' : EE::line( sprintf( 'Adding auth to %s', $site->site_url ) );
-
-			$this->create_auth( $assoc_args, 'default', $site->site_url );
-		}
-	}
-
-	/**
 	 * Helper function for `ee auth create admin-tools`
-	 * Creates auth for `default_admin_tools`
+	 * Creates auth for `admin-tools`
 	 *
 	 * @param array $assoc_argsassoc arguments passed to ee auth create.
 	 *
@@ -520,7 +460,7 @@ class Auth_Command extends EE_Command {
 	 * ## OPTIONS
 	 *
 	 * [<site-name>]
-	 * : Name of website / `global` for global auth / `admin-tools` for default_admin_tools.
+	 * : Name of website / `global` for global auth / `admin-tools` for admin-tools.
 	 *
 	 * [--user=<user>]
 	 * : Username for http auth.
@@ -722,10 +662,7 @@ class Auth_Command extends EE_Command {
 	 * ## OPTIONS
 	 *
 	 * [<site-name>]
-	 * : Name of website / `global` for global scope / `admin-tools` for default_admin_tools.
-	 *
-	 * [<all-sites>]
-	 * : Delete authentication on all sites.
+	 * : Name of website / `global` for global scope / `admin-tools` for admin-tools.
 	 *
 	 * [--user=<user>]
 	 * : Username that needs to be deleted.
@@ -763,10 +700,7 @@ class Auth_Command extends EE_Command {
 
 		verify_htpasswd_is_present();
 
-		if ( 'all-sites' === $args[0] ) {
-			$this->delete_all( $assoc_args );
-			return;
-		} elseif ( 'admin-tools' ) {
+		if ( 'admin-tools' ) {
 			$this->admin_tools_delete_auth( $assoc_args );
 			return;
 		}
@@ -848,56 +782,6 @@ class Auth_Command extends EE_Command {
 	}
 
 	/**
-	 * Deletes authentication on all the sites (matching a criteria)
-	 *
-	 * @param array $assoc_args associated arguments passed form the CLI.
-	 *
-	 * @return void
-	 */
-	private function delete_all( $assoc_args ) {
-		$args = array();
-
-		if ( ! empty( $assoc_args['user'] ) ) {
-			$args['username'] = $assoc_args['user'];
-		}
-
-		if ( ! empty( $assoc_args['pass'] ) && ! empty( $assoc_args['user'] ) ) {
-			$args['password'] = $assoc_args['pass'];
-		} else {
-			EE::error( 'Incorrect usage. Please supply the username using --user' );
-		}
-
-		EE::confirm( 'This action will delete authentication on all the sites. Do you wish to continue?' );
-
-		if ( ! empty( $args ) ) {
-			$sites = Auth::where( $args );
-		} else {
-			$sites = Auth::all();
-		}
-
-		if ( empty( $sites ) ) {
-			$optional_text = ( ! empty( $assoc_args['pass'] ) ) ? sprintf( 'and password `%s`', $assoc_args['pass'] ) : '';
-			empty( $args ) ? EE::error( 'No sites found' ) : EE::error( sprintf( 'No sites auth with username `%1$s` %2$s', $assoc_args['user'], $optional_text ) );
-			return;
-		}
-
-		foreach ( $sites as $site ) {
-			if ( 'default_admin_tools' === $site->site_url ) {
-				continue;
-			}
-
-			$args = array( $site->site_url );
-
-			$assoc_args = array(
-				'user' => $site->username,
-			);
-
-			$this->delete( $args, $assoc_args );
-			EE::line( sprintf( 'Deleted authentication on %1$s', $site->site_url ) );
-		}
-	}
-	
-	/**
 	 * Helper function for `ee auth delete admin-tools --user`
 	 * Deletes `admin-tools` user with a pre-defined username
 	 *
@@ -941,7 +825,7 @@ class Auth_Command extends EE_Command {
 	 * ## OPTIONS
 	 *
 	 * [<site-name>]
-	 * : Name of website / `global` for global scope / 'admin-tools' for default_admin_tools.
+	 * : Name of website / `global` for global scope / 'admin-tools' for admin-tools.
 	 *
 	 * [--ip]
 	 * : Show whitelisted IPs of site.
@@ -1021,7 +905,7 @@ class Auth_Command extends EE_Command {
 
 	/**
 	 * Helper function for ee auth list admin-tools
-	 * Prints all the auths on site_name=default_admin_tools
+	 * Prints all the auths on `admin-tools`
 	 *
 	 * @return void
 	 */
