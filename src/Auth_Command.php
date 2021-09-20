@@ -667,9 +667,6 @@ class Auth_Command extends EE_Command {
 	 * [--user=<user>]
 	 * : Username that needs to be deleted.
 	 *
-	 * [--pass=<pass>]
-	 * : Username with this password that needs to be deleted.
-	 *
 	 * [--ip]
 	 * : IP to remove. Default removes all.
 	 *

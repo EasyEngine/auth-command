@@ -90,7 +90,7 @@ ee auth create [<site-name>] [--user=<user>] [--pass=<pass>] [--ip=<ip>]
 Deletes http authentication for a site. Default: removes http authentication from site. If `--user` is passed it removes that specific user.
 
 ~~~
-ee auth delete [<site-name>] [--user=<user>] [--pass=<pass>] [--ip]
+ee auth delete [<site-name>] [--user=<user>] [--ip]
 ~~~
 
 **OPTIONS**
