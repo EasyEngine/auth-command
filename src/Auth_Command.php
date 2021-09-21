@@ -20,6 +20,7 @@ use Symfony\Component\Filesystem\Filesystem;
 use function EE\Auth\Utils\verify_htpasswd_is_present;
 use function EE\Site\Utils\auto_site_name;
 use function EE\Site\Utils\get_site_info;
+use function EE\Site\Utils\get_site_name;
 use function EE\Site\Utils\reload_global_nginx_proxy;
 
 class Auth_Command extends EE_Command {
@@ -690,8 +691,8 @@ class Auth_Command extends EE_Command {
 	 */
 	public function list( $args, $assoc_args ) {
 
-		// handle only 'ee auth list' separately.
-		if ( empty( $args ) ) {
+		// Display all the auths if `ee auth list' is run from outside of site directory.
+		if ( empty( $args ) && ! get_site_name() ) {
 			$this->display_all_auths();
 			return;
 		}
@@ -748,59 +749,31 @@ class Auth_Command extends EE_Command {
 	 */
 	private function display_all_auths() {
 
-		$data = array();
-
-		// To store auth data in hash table form  ('key' as 'site url' and 'value' as 'array of credentials').
-		// It will group all the auths for a particular site together.
-		$hash_table = array();
-
 		// Fetch all the auths across all the sites.
 		$sites = Auth::all();
 
-		$formatter = new EE\Formatter( $assoc_args, [ 'site', 'username', 'password' ] );
+		$formatter = new EE\Formatter( $assoc_args, [ 'sitename', 'username', 'password' ] );
 
-		foreach ( $sites as $site ) {
+		// Add a field named 'sitename' to the array , so that it can be displayed as heading in output.
+		$result = array_map(
+			function ( $site ) {
+				$site->sitename = $site->site_url;
+				return $site;
+			},
+			$sites
+		);
 
-			// Check if this is first occurrence of site.
-			if ( ! isset( $hash_table[ $site->site_url ] ) ) {
+		// Sorts the $result array to make sure that same sites appear together.
+		usort(
+			$result,
+			function ( $item1, $item2 ) {
 
-				// If yes then it will create a new 'key' named 'site_url'.
-				$hash_table[ $site->site_url ] = array(
-					array(
-						'username' => $site->username,
-						'password' => $site->password,
-					),
-				);
-
-			} else {
-
-				$new_entry = array(
-					'username' => $site->username,
-					'password' => $site->password,
-				);
-
-				array_push( $hash_table[ $site->site_url ], $new_entry );
-			}
-		}
-
-		// Fetch auth data from hash table and transform it into a simple array.
-		foreach ( $hash_table as $key => $credentials ) {
-
-			$row = array();
-
-			$row['site'] = $key;
-
-			foreach ( $credentials as $credential ) {
-
-				$row['username'] = $credential['username'];
-				$row['password'] = $credential['password'];
-
-				array_push( $data, $row );
+				return strcmp( $item1->sitename, $item2->sitename );
 
 			}
-		}
+		);
 
-		$formatter->display_items( $data );
+		$formatter->display_items( $result );
 	}
 
 }
