@@ -93,11 +93,6 @@ class Auth_Command extends EE_Command {
 
 		verify_htpasswd_is_present();
 
-		if ( 'admin-tools' === $args[0] ) {
-			$this->admin_tools_create_auth( $assoc_args );
-			return;
-		}
-
 		$global   = $this->populate_info( $args, __FUNCTION__ );
 		$ips      = \EE\Utils\get_flag_value( $assoc_args, 'ip' );
 		$site_url = $global ? 'default' : $this->site_data->site_url;
@@ -106,50 +101,6 @@ class Auth_Command extends EE_Command {
 			$this->create_whitelist( $site_url, $ips );
 		} else {
 			$this->create_auth( $assoc_args, $global, $site_url );
-		}
-	}
-
-	/**
-	 * Helper function for `ee auth create admin-tools`
-	 * Creates auth for `admin-tools`
-	 *
-	 * @param array $assoc_argsassoc arguments passed to ee auth create.
-	 *
-	 * @return void
-	 */
-	private function admin_tools_create_auth( $assoc_args ) {
-		verify_htpasswd_is_present();
-
-		$user = EE\Utils\get_flag_value( $assoc_args, 'user' );
-
-		if ( ! $user ) {
-			EE::error( 'Please provide auth user with --user flag' );
-			return;
-		} // no random usernames allowed.
-
-		$pass = EE\Utils\get_flag_value( $assoc_args, 'pass', EE\Utils\random_password() );
-		$show_updated_auth = EE\Utils\get_flag_value( $assoc_args, 'show-updated', false ); // prints updated auth list.
-
-
-		// prepare data to be passed to create().
-		$columns = array(
-			'site_url' => 'default_admin_tools',
-			'username' => $user,
-			'password' => $pass,
-		);
-
-		// Use create() with site_url='default_admin_tools'.
-		\EE\Model\Auth::create( $columns );
-
-		// Prepare and execute command to create updated htpasswd file.
-		EE::exec( sprintf( 'docker exec %s htpasswd -bc /etc/nginx/htpasswd/default_admin_tools %s %s', EE_PROXY_TYPE, $user, $pass ) );
-
-		EE::success( 'Added auth to `admin-tools`' );
-		EE::line( sprintf( 'Username: %s', $user ) );
-		EE::line( sprintf( 'Password: %s', $pass ) );
-
-		if ( $show_updated_auth ) {
-			EE::run_command( array( 'auth', 'list', 'admin-tools' ) );
 		}
 	}
 
@@ -286,6 +237,10 @@ class Auth_Command extends EE_Command {
 				'site_url' => $args[0],
 			);
 			$global          = true;
+		} else if ( isset( $args[0] ) && 'admin-tools' === $args[0] ) {
+			$this->site_data = (object) array(
+				'site_url' => 'default_admin_tools',
+			);
 		} else {
 			$args            = auto_site_name( $args, 'auth', $command );
 			$this->site_data = get_site_info( $args, true, true, false );
