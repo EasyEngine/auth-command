@@ -164,7 +164,7 @@ class Auth_Command extends EE_Command {
 		}
 
 		$admin_tools_auth = Auth::get_global_admin_tools_auth();
-		EE::warning( $site_url );
+		EE::warning( sprintf( 'Creating auth on site_url: %s', $site_url ) );
 
 		if ( 'default' === $site_url && ! empty( $admin_tools_auth ) ) {
 			$admin_tools_auth[0]->site_url = 'default';
@@ -179,13 +179,12 @@ class Auth_Command extends EE_Command {
 			$this->generate_site_auth_files( $site_url );
 		}
 
-		EE::log( 'Reloading global reverse proxy.' );
-		reload_global_nginx_proxy();
-
 		EE::success( sprintf( 'Auth successfully updated for `%s` scope. New values added:', $site_url ) );
 		EE::line( 'User: ' . $user );
 		EE::line( 'Pass: ' . $pass );
 
+		EE::log( 'Reloading global reverse proxy.' );
+		reload_global_nginx_proxy();
 	}
 
 	/**
@@ -449,11 +448,6 @@ class Auth_Command extends EE_Command {
 	public function update( $args, $assoc_args ) {
 		verify_htpasswd_is_present();
 
-		if ( ! empty( $args[0] ) && 'admin-tools' === $args[0] ) {
-			$this->admin_tools_update_auth( $assoc_args );
-			return;
-		}
-
 		$global   = $this->populate_info( $args, __FUNCTION__ );
 		$site_url = $global ? 'default' : $this->site_data->site_url;
 		$ips      = EE\Utils\get_flag_value( $assoc_args, 'ip' );
@@ -465,40 +459,6 @@ class Auth_Command extends EE_Command {
 		}
 	}
 	
-	/**
-	 * Helper function for `ee auth update admin-tools`
-	 * Updates existing auths of admin-tools based for a user
-	 * 
-	 * @param array $assoc_args assoc arguments passed from the function.
-	 *
-	 * @return void
-	 */
-	private function admin_tools_update_auth( $assoc_args ) {
-		$user = EE\Utils\get_flag_value( $assoc_args, 'user' );
-
-		if ( !$user ) {
-			EE::error( 'Please provide auth user with --user flag' );
-		}
-
-		$pass = EE\Utils\get_flag_value( $assoc_args, 'pass', EE\Utils\random_password() ); // Use a random password if no password is supplied.
-
-		$auths = $this->get_auths( 'default_admin_tools', $user ); // Get all the current occurences of the username.
-
-		foreach( $auths as $auth ) {
-			$auth->password = $pass;
-			$auth->save();
-		} // Update each occurence of the username with a newer one.
-
-		$this->generate_global_auth_files(); // Renew htpasswd file.
-
-		EE::success( sprintf( 'Auth for %s successfully updated.', $user, $pass ) );
-		
-		EE::line( 'Updated details:' );
-		$auth = $this->get_auths( 'default_admin_tools', $user, false );
-		$formatter = new EE\Formatter( $assoc_args, array( 'username', 'password' ) );
-		$formatter->display_items( $auths );
-	}
-
 	/**
 	 * Update whitelist IPs
 	 *
@@ -649,13 +609,7 @@ class Auth_Command extends EE_Command {
 	 *     $ ee auth delete global --ip=1.1.1.1
 	 */
 	public function delete( $args, $assoc_args ) {
-
 		verify_htpasswd_is_present();
-
-		if ( 'admin-tools' ) {
-			$this->admin_tools_delete_auth( $assoc_args );
-			return;
-		}
 
 		$global   = $this->populate_info( $args, __FUNCTION__ );
 		$site_url = $global ? 'default' : $this->site_data->site_url;
@@ -734,44 +688,6 @@ class Auth_Command extends EE_Command {
 	}
 
 	/**
-	 * Helper function for `ee auth delete admin-tools --user`
-	 * Deletes `admin-tools` user with a pre-defined username
-	 *
-	 * @param array $assoc_args Assoc arguments passed via the CLI.
-	 *
-	 * @return void
-	 */
-	private function admin_tools_delete_auth( $assoc_args ) {
-		$user = EE\Utils\get_flag_value( $assoc_args, 'user' );
-
-		if ( ! $user ) {
-			EE::error( 'Please provide auth user with --user flag' );
-			return;
-		} // Output an error if no username is supplied.
-
-		$auth_match = Auth::where( array(
-			'site_url' => 'default_admin_tools',
-			'username' => $user,
-		) );
-
-		if ( empty( $auth_match ) ) {
-			EE::error( sprintf( 'No matching auths on `admin-tools` for %s', $user ) );
-			return;
-		} // Output an error if no matching auth records are found.
-
-		EE::confirm( sprintf( 'Do you want to delete auth for `%s` on `admin-tools`? This action is IRREVERSIBLE.', $user ) );
-
-		$auth_match[0]->delete(); // Delete the record from `auth_users`.
-
-		$this->generate_global_auth_files( true ); // Renew the htpasswd file.
-
-		$success_message = sprintf( 'Deleted `%s` on admin-tools.', $user );
-		EE::success( $success_message );
-		EE::log( 'Reloading global reverse proxy.' );
-		reload_global_nginx_proxy();
-	}
-
-	/**
 	 * Lists http authentication users of a site.
 	 *
 	 * ## OPTIONS
@@ -806,11 +722,6 @@ class Auth_Command extends EE_Command {
 	 *     $ ee auth list admin-tools
 	 */
 	public function list( $args, $assoc_args ) {
-		if ( ! empty( $args[0]) && 'admin-tools' === $args[0] ) {
-			$this->admin_tools_list_auth();
-			return;
-		}
-
 		$global   = $this->populate_info( $args, __FUNCTION__ );
 		$site_url = $global ? 'default' : $this->site_data->site_url;
 		$ip       = \EE\Utils\get_flag_value( $assoc_args, 'ip' );
@@ -833,7 +744,7 @@ class Auth_Command extends EE_Command {
 				EE::error( 'Auth does not exists on global.' );
 			}
 			$format = \EE\Utils\get_flag_value( $assoc_args, 'format' );
-			if ( 'table' === $format ) {
+			if ( 'table' === $format && 'admin-tools' !== $args[0] ) {
 				$log_msg = $admin_tools_auth ? 'Following auth is applied only on admin-tools.' : 'Following global auth is enabled on server.';
 			}
 			if ( 'default' !== $site_url ) {
@@ -848,31 +759,11 @@ class Auth_Command extends EE_Command {
 			if ( ! empty( $log_msg ) ) {
 				EE::log( PHP_EOL . $log_msg );
 			}
-			if ( ! empty( $auths_global ) ) {
+			// Only output global auths if admin-tools auths are not requested.
+			if ( ! empty( $auths_global ) && 'admin-tools' !== $args[0] ) {
 				$formatter = new EE\Formatter( $assoc_args, array( 'username', 'password' ) );
 				$formatter->display_items( $auths_global );
 			}
-		}
-	}
-
-	/**
-	 * Helper function for ee auth list admin-tools
-	 * Prints all the auths on `admin-tools`
-	 *
-	 * @return void
-	 */
-	private function admin_tools_list_auth() {
-		$auths = $this->get_auths( 'default_admin_tools', false, false );
-
-		if ( empty( $auths ) ) {
-			EE::warning( sprintf( 'Auth does not exists on `default_admin_tools`' ) );
-		} else {
-			EE::line( 'Following auth exists on admin-tools (default_admin_tools):' );
-			$formatter = new EE\Formatter( $assoc_args, array( 'username', 'password' ) );
-			$formatter->display_items( $auths );
-		}
-		if ( ! empty( $log_msg ) ) {
-			EE::log( PHP_EOL . $log_msg );
 		}
 	}
 }
