@@ -743,23 +743,29 @@ class Auth_Command extends EE_Command {
 			if ( empty( $auths_global ) ) {
 				EE::error( 'Auth does not exists on global.' );
 			}
+			
 			$format = \EE\Utils\get_flag_value( $assoc_args, 'format' );
+
 			if ( 'table' === $format && 'admin-tools' !== $args[0] ) {
 				$log_msg = $admin_tools_auth ? 'Following auth is applied only on admin-tools.' : 'Following global auth is enabled on server.';
-			}
+			} 
+
 			if ( 'default' !== $site_url ) {
 				$auths = $this->get_auths( $site_url, false, false );
 				if ( empty( $auths ) ) {
 					EE::warning( sprintf( 'Auth does not exists on %s', $site_url ) );
 				} else {
+					$msg = sprintf( 'Following auth exists on `%s`.', ( 'admin-tools' !== $args[0] ? $site_url : 'admin-tools' ) );
+					EE::line( $msg );
 					$formatter = new EE\Formatter( $assoc_args, array( 'username', 'password' ) );
 					$formatter->display_items( $auths );
 				}
 			}
-			if ( ! empty( $log_msg ) ) {
+
+			if ( ! empty( $log_msg ) && 'admin-tools' !== $args[0] ) {
 				EE::log( PHP_EOL . $log_msg );
 			}
-			// Only output global auths if admin-tools auths are not requested.
+			// Only output global auths if admin-tools auths are not explicitly requested.
 			if ( ! empty( $auths_global ) && 'admin-tools' !== $args[0] ) {
 				$formatter = new EE\Formatter( $assoc_args, array( 'username', 'password' ) );
 				$formatter->display_items( $auths_global );
