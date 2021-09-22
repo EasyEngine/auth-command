@@ -742,12 +742,7 @@ class Auth_Command extends EE_Command {
 			$formatter->display_items( $whitelists );
 		} else {
 			$log_msg          = '';
-			$auths_global     = Auth::get_global_admin_tools_auth();
-			$admin_tools_auth = true;
-			if ( empty( $auths_global ) ) {
-				$auths_global     = Auth::get_global_auths();
-				$admin_tools_auth = false;
-			}
+			$auths_global     = Auth::get_global_auths();
 
 			if ( empty( $auths_global ) ) {
 				EE::error( 'Auth does not exists on global.' );
@@ -756,7 +751,7 @@ class Auth_Command extends EE_Command {
 			$format = \EE\Utils\get_flag_value( $assoc_args, 'format' );
 
 			if ( 'table' === $format && 'admin-tools' !== $args[0] ) {
-				$log_msg = $admin_tools_auth ? 'Following auth is applied only on admin-tools.' : 'Following global auth is enabled on server.';
+				$log_msg = 'Following global auth is enabled on server.';
 			} 
 
 			if ( 'default' !== $site_url ) {
