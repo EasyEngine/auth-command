@@ -60,9 +60,6 @@ class Auth_Command extends EE_Command {
 	 * [--ip=<ip>]
 	 * : IP to whitelist.
 	 *
-	 * [--show-updated]
-	 * : Shows updated `admin-tools` auth (if site-name == admin-tools).
-	 *
 	 * ## EXAMPLES
 	 *
 	 *     # Add auth on site with default username(easyengine) and random password
@@ -757,7 +754,7 @@ class Auth_Command extends EE_Command {
 			if ( 'default' !== $site_url ) {
 				$auths = $this->get_auths( $site_url, false, false );
 				if ( empty( $auths ) ) {
-					EE::warning( sprintf( 'Auth does not exists on %s', $site_url ) );
+					EE::error( sprintf( 'Auth does not exists on %s', $site_url ) );
 				} else {
 					$msg = sprintf( 'Following auth exists on `%s`.', ( 'admin-tools' !== $args[0] ? $site_url : 'admin-tools' ) );
 					EE::line( $msg );
