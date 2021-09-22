@@ -745,15 +745,13 @@ class Auth_Command extends EE_Command {
 	 * This will display all the auths of all the sites
 	 *
 	 * @return void
-	 * @throws Exception
 	 */
 	private function display_all_auths() {
 
 		// Fetch all the auths across all the sites.
 		$sites = Auth::all();
-
-		$formatter = new EE\Formatter( $assoc_args, [ 'sitename', 'username', 'password' ] );
-
+		$formatter = new EE\Formatter( $assoc_args, array( 'sitename', 'username', 'password' ) );
+	
 		// Add a field named 'sitename' to the array , so that it can be displayed as heading in output.
 		$result = array_map(
 			function ( $site ) {
@@ -762,17 +760,15 @@ class Auth_Command extends EE_Command {
 			},
 			$sites
 		);
-
+	
 		// Sorts the $result array to make sure that same sites appear together.
 		usort(
 			$result,
 			function ( $item1, $item2 ) {
-
 				return strcmp( $item1->sitename, $item2->sitename );
-
 			}
 		);
-
+	
 		$formatter->display_items( $result );
 	}
 
