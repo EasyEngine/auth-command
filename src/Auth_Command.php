@@ -585,7 +585,7 @@ class Auth_Command extends EE_Command {
 	 * [--ip]
 	 * : IP to remove. Default removes all.
 	 * 
-	 * [--y]
+	 * [--yes]
 	 * : Do not ask for confirmation.
 	 * 
 	 * ## EXAMPLES
@@ -603,7 +603,7 @@ class Auth_Command extends EE_Command {
 	 *     $ ee auth delete admin-tools --user=test
 	 *
 	 * 	   # Remove auth on `admin-tools` with custom username without asking for confirmation
-	 *     $ ee auth delete admin-tools --user=test --y
+	 *     $ ee auth delete admin-tools --user=test --yes
 	 * 
 	 *     # Remove specific whitelisted IPs on site
 	 *     $ ee auth delete example.com --ip=1.1.1.1,8.8.8.8
@@ -620,14 +620,13 @@ class Auth_Command extends EE_Command {
 		$global   = $this->populate_info( $args, __FUNCTION__ );
 		$site_url = $global ? 'default' : $this->site_data->site_url;
 		$ip       = EE\Utils\get_flag_value( $assoc_args, 'ip' );
-		$no_conf  = EE\Utils\get_flag_value( $assoc_args, 'y' );
 
 		if ( ! $ip ) {
 			$user  = EE\Utils\get_flag_value( $assoc_args, 'user' );
 			$auths = $this->get_auths( $site_url, $user );
 
 			$del_conf_msg = sprintf( 'Are you sure that you want to delete `%1$s` on `%2$s`?', $user, ( 'admin-tools' !== $args[0] ? $site_url : 'admin-tools' ) );
-			$no_conf ? '' : EE::confirm( $del_conf_msg );
+			EE::confirm( $del_conf_msg, $assoc_args );
 
 			foreach ( $auths as $auth ) {
 				$auth->delete();
