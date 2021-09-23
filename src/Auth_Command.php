@@ -750,8 +750,11 @@ class Auth_Command extends EE_Command {
 
 		// Fetch all the auths across all the sites.
 		$sites = Auth::all();
+		if ( empty( $sites ) ) {
+			EE::error( 'No auths exits on any sites' );
+		}
 		$formatter = new EE\Formatter( $assoc_args, array( 'sitename', 'username', 'password' ) );
-	
+
 		// Add a field named 'sitename' to the array , so that it can be displayed as heading in output.
 		$result = array_map(
 			function ( $site ) {
@@ -760,7 +763,7 @@ class Auth_Command extends EE_Command {
 			},
 			$sites
 		);
-	
+
 		// Sorts the $result array to make sure that same sites appear together.
 		usort(
 			$result,
@@ -768,7 +771,7 @@ class Auth_Command extends EE_Command {
 				return strcmp( $item1->sitename, $item2->sitename );
 			}
 		);
-	
+
 		$formatter->display_items( $result );
 	}
 
