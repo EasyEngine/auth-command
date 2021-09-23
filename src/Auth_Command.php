@@ -161,17 +161,19 @@ class Auth_Command extends EE_Command {
 		}
 
 		$admin_tools_auth = Auth::get_global_admin_tools_auth();
+		$global_auths = Auth::get_global_auths();
+
 		EE::warning( sprintf( 'Creating auth on site_url: %s', $site_url ) );
 
-		if ( 'default' === $site_url && ! empty( $admin_tools_auth ) ) {
-			$admin_tools_auth[0]->site_url = 'default';
-			$admin_tools_auth[0]->save();
-		}
+		// if ( 'default' === $site_url && ! empty( $global_auths ) ) {
+		// 	$global_auths[0]->site_url = 'default';
+		// 	$global_auths[0]->save();
+		// }
 
 		Auth::create( $auth_data );
 
 		if ( 'default' === $site_url ) {
-			$this->generate_global_auth_files();
+			$this->generate_global_auth_files( $site_url );
 		} else {
 			$this->generate_site_auth_files( $site_url );
 		}
@@ -264,51 +266,51 @@ class Auth_Command extends EE_Command {
 	/**
 	 * Generates auth files for global auth and all sites.
 	 *
-	 * @param bool $clean_admin_auths syncs the auth_user table with htpasswd file (default: false).
+	 * @param bool $clean_auths syncs the auth_user table with htpasswd file (default: false).
 	 * @throws Exception
 	 */
-	private function generate_global_auth_files( $clean_admin_auths = false ) {
-
-		$global_admin_tools_auths = Auth::get_global_admin_tools_auth();
-
-		if ( $clean_admin_auths ) {
+	private function generate_global_auth_files( $site = 'default', $clean_auths = false ) {
+		if ( $clean_auths && 'default_admin_tools' === $site ) {
 			$this->fs->remove( EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/default_admin_tools' );
 			EE::warning( 'Cleaned htpasswd at ' . EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/default_admin_tools' );
-		} // Clean the existing `admin-tools` auth for proper synchronization.
+		} else if ( $clean_auths && 'default' === $site ) {
+			$this->fs->remove( EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/default' );
+			EE::warning( 'Cleaned htpasswd at ' . EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/default' );
+		}  // Clean the existing `admin-tools` | `global` auths for proper synchronization.
+		
+		$auths = 'default_admin_tools' === $site ? Auth::get_global_admin_tools_auth() : Auth::get_global_auths();
 
-		foreach ( $global_admin_tools_auths as $global_admin_tools_auth ) {
-			if ( ! empty( $global_admin_tools_auth ) ) {
-				EE::exec( sprintf( 'docker exec %s htpasswd -bc /etc/nginx/htpasswd/default_admin_tools %s %s', EE_PROXY_TYPE, $global_admin_tools_auth->username, $global_admin_tools_auth->password ) );
-			} else {
-				$this->fs->remove( EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/default_admin_tools' );
-				$this->fs->remove( EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/default' );
-				$auths = Auth::get_global_auths();
-	
-				if ( empty( $auths ) ) {
-					$this->regen_admin_tools_auth();
-				} else {
-					foreach ( $auths as $key => $auth ) {
-						$flags = 'b';
-	
-						if ( 0 === $key ) {
-							$flags = 'bc';
-						}
-	
-						EE::exec( sprintf( 'docker exec %s htpasswd -%s /etc/nginx/htpasswd/default %s %s', EE_PROXY_TYPE, $flags, $auth->username, $auth->password ) );
-					}
+		foreach ( $auths as $auth ) {
+			if ( ! empty( $auth ) ) {
+				EE::exec( sprintf( 'docker exec %1$s htpasswd -bc /etc/nginx/htpasswd/%2$s %3$s %4$s', EE_PROXY_TYPE, $site, $auth->username, $auth->password ) );
+			} 
+		}
+		
+		$auths = Auth::get_global_auths();
+
+		if ( empty( $auths ) ) {
+			$this->regen_admin_tools_auth();
+		} else {
+			foreach ( $auths as $key => $auth ) {
+				$flags = 'b';
+
+				if ( 0 === $key ) {
+					$flags = 'bc';
 				}
-	
-				$sites = array_unique(
-					array_column(
-						Auth::all( array( 'site_url' ) ),
-						'site_url'
-					)
-				);
-	
-				foreach ( $sites as $site ) {
-					$this->generate_site_auth_files( $site );
-				}
+
+				EE::exec( sprintf( 'docker exec %1$s htpasswd -%2$s /etc/nginx/htpasswd/%3$ %4$s %5$s', EE_PROXY_TYPE, $flags, $site, $auth->username, $auth->password ) );
 			}
+		}
+
+		$sites = array_unique(
+			array_column(
+				Auth::all( array( 'site_url' ) ),
+				'site_url'
+			)
+		);
+
+		foreach ( $sites as $site ) {
+			$this->generate_site_auth_files( $site );
 		}
 	}
 
@@ -479,7 +481,7 @@ class Auth_Command extends EE_Command {
 		}
 
 		if ( 'default' === $site_url ) {
-			$this->generate_global_auth_files();
+			$this->generate_global_auth_files( $site_url );
 		} else {
 			$this->generate_site_auth_files( $site_url );
 		}
@@ -630,7 +632,7 @@ class Auth_Command extends EE_Command {
 			}
 
 			if ( 'default' === $site_url ) {
-				$this->generate_global_auth_files();
+				$this->generate_global_auth_files( $site_url );
 			} else {
 				$this->generate_site_auth_files( $site_url );
 			}
