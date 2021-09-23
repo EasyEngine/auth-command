@@ -264,7 +264,6 @@ class Auth_Command extends EE_Command {
 	}
 
 	/**
-	 * @todo
 	 * Generates auth files for global auth and all sites.
 	 *
 	 * @param bool $clean_auths syncs the auth_user table with htpasswd file (default: false).
@@ -279,26 +278,11 @@ class Auth_Command extends EE_Command {
 			EE::warning( 'Cleaned htpasswd at ' . EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/default' );
 		}  // Clean the existing `admin-tools` | `global` auths for proper synchronization.
 		
-		$global_admin_tools_auths = Auth::get_global_admin_tools_auth();
-		$global_auths             = Auth::get_global_auths();
+		$auths = 'default_admin_tools' === $site ? Auth::get_global_admin_tools_auth() : Auth::get_global_auths();
 
-		switch ( $site ) {
-			case 'default_admin_tools':
-				EE::log( 'Generating auth file(s) for `default_admin_tools`...' );
-				break;
-			case 'default':
-				EE::log( 'Generating auth file(s) for `default`...' );
-				$this->generate_default_auth_files( $global_auths );
-				break;
-			default:
-				return;
-		}
-	}
-
-	private function generate_default_auth_files( $auths ) {
 		foreach ( $auths as $auth ) {
 			if ( ! empty( $auth ) ) {
-				EE::exec( sprintf( 'docker exec %s htpasswd -bc /etc/nginx/htpasswd/default %s %s', EE_PROXY_TYPE, $auth->username, $auth->password ) );
+				EE::exec( sprintf( 'docker exec %1$s htpasswd -bc /etc/nginx/htpasswd/%2$s %3$s %4$s', EE_PROXY_TYPE, $site, $auth->username, $auth->password ) );
 			} 
 		}
 		
@@ -314,7 +298,7 @@ class Auth_Command extends EE_Command {
 					$flags = 'bc';
 				}
 
-				EE::exec( sprintf( 'docker exec %s htpasswd -%s /etc/nginx/htpasswd/default %s %s', EE_PROXY_TYPE, $flags, $auth->username, $auth->password ) );
+				EE::exec( sprintf( 'docker exec %1$s htpasswd -%2$s /etc/nginx/htpasswd/%3$ %4$s %5$s', EE_PROXY_TYPE, $flags, $site, $auth->username, $auth->password ) );
 			}
 		}
 
