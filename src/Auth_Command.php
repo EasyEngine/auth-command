@@ -20,6 +20,7 @@ use Symfony\Component\Filesystem\Filesystem;
 use function EE\Auth\Utils\verify_htpasswd_is_present;
 use function EE\Site\Utils\auto_site_name;
 use function EE\Site\Utils\get_site_info;
+use function EE\Site\Utils\get_site_name;
 use function EE\Site\Utils\reload_global_nginx_proxy;
 
 class Auth_Command extends EE_Command {
@@ -684,8 +685,17 @@ class Auth_Command extends EE_Command {
 	 *     # List all global auth
 	 *     $ ee auth list global
 	 *
+	 *     # List all auths across all sites
+	 *     $ ee auth list
+	 *
 	 */
 	public function list( $args, $assoc_args ) {
+
+		// Display all the auths if `ee auth list' is run from outside of site directory.
+		if ( empty( $args ) && ! get_site_name() ) {
+			$this->display_all_auths();
+			return;
+		}
 
 		$global   = $this->populate_info( $args, __FUNCTION__ );
 		$site_url = $global ? 'default' : $this->site_data->site_url;
@@ -730,5 +740,40 @@ class Auth_Command extends EE_Command {
 			}
 		}
 	}
+
+	/**
+	 * This will display all the auths of all the sites
+	 *
+	 * @return void
+	 */
+	private function display_all_auths() {
+
+		// Fetch all the auths across all the sites.
+		$sites = Auth::all();
+		if ( empty( $sites ) ) {
+			EE::error( 'No auths exits on any sites' );
+		}
+		$formatter = new EE\Formatter( $assoc_args, array( 'sitename', 'username', 'password' ) );
+
+		// Add a field named 'sitename' to the array , so that it can be displayed as heading in output.
+		$result = array_map(
+			function ( $site ) {
+				$site->sitename = $site->site_url;
+				return $site;
+			},
+			$sites
+		);
+
+		// Sorts the $result array to make sure that same sites appear together.
+		usort(
+			$result,
+			function ( $item1, $item2 ) {
+				return strcmp( $item1->sitename, $item2->sitename );
+			}
+		);
+
+		$formatter->display_items( $result );
+	}
+
 }
 
