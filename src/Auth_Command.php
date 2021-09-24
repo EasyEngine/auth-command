@@ -299,6 +299,12 @@ class Auth_Command extends EE_Command {
 		$site_auth_file = EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/' . $site_url;
 		$this->fs->remove( $site_auth_file );
 
+		// Ensure that sites with only global auths doesn't store it in `htpasswd/site_url` file
+		$local_auths = Auth::where( 'site_url', $site_url );
+		if ( empty( $local_auths ) ) {
+			return;
+		}
+
 		$auths = array_merge(
 			Auth::get_global_auths(),
 			Auth::where( 'site_url', $site_url )
