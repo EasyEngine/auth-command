@@ -585,6 +585,31 @@ class Auth_Command extends EE_Command {
 
 		if ( ! $ip ) {
 			$user = EE\Utils\get_flag_value( $assoc_args, 'user' );
+
+			//When command is of the form `ee auth delete <sitename>`.
+			if ( null === $user ) {
+				EE::line( 'Auto deleting Whitelisted IPs if any...' );
+
+				$whitelists = Whitelist::where(
+					array(
+						'site_url' => $site_url,
+					)
+				);
+
+				foreach ( $whitelists as $whitelist ) {
+					$whitelist->delete();
+				}
+
+				if ( 'default' === $site_url ) {
+					$this->generate_global_whitelist();
+				} else {
+					$this->generate_site_whitelist( $site_url );
+				}
+
+				reload_global_nginx_proxy();
+
+			}
+
 			$auths = $this->get_auths( $site_url, $user );
 
 			foreach ( $auths as $auth ) {
