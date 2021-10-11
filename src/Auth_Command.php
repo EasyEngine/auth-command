@@ -299,6 +299,12 @@ class Auth_Command extends EE_Command {
 		$site_auth_file = EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/' . $site_url;
 		$this->fs->remove( $site_auth_file );
 
+		// Ensure that sites with only global auths doesn't store it in `htpasswd/site_url` file
+		$local_auths = Auth::where( 'site_url', $site_url );
+		if ( empty( $local_auths ) ) {
+			return;
+		}
+
 		$auths = array_merge(
 			Auth::get_global_auths(),
 			Auth::where( 'site_url', $site_url )
@@ -348,6 +354,14 @@ class Auth_Command extends EE_Command {
 	private function generate_site_whitelist( string $site_url ) {
 		$site_whitelist_file = EE_ROOT_DIR . '/services/nginx-proxy/vhost.d/' . $site_url . '_acl';
 		$this->fs->remove( $site_whitelist_file );
+
+		// Ensure that sites with only global ip whitelist doesn't store whitelist in `vhost.d/site_url_avl` file
+		if ( $site_url !== 'default' ) {
+			$site_specific_whitelist = Whitelist::where( 'site_url', $site_url );
+			if ( empty( $site_specific_whitelist ) ) {
+				return;
+			}
+		}
 
 		$whitelists = array_column(
 			'default' === $site_url ? Whitelist::get_global_ips() :
