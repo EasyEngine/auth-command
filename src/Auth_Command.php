@@ -355,6 +355,14 @@ class Auth_Command extends EE_Command {
 		$site_whitelist_file = EE_ROOT_DIR . '/services/nginx-proxy/vhost.d/' . $site_url . '_acl';
 		$this->fs->remove( $site_whitelist_file );
 
+		// Ensure that sites with only global ip whitelist doesn't store whitelist in `vhost.d/site_url_avl` file
+		if ( $site_url !== 'default' ) {
+			$site_specific_whitelist = Whitelist::where( 'site_url', $site_url );
+			if ( empty( $site_specific_whitelist ) ) {
+				return;
+			}
+		}
+
 		$whitelists = array_column(
 			'default' === $site_url ? Whitelist::get_global_ips() :
 				array_merge(
