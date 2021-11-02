@@ -5,6 +5,9 @@ namespace EE\Auth\Utils;
 
 use EE;
 use EE\Model\Auth;
+use EE\Model\Option;
+use function EE\Service\Utils\ensure_global_network_initialized;
+use function EE\Utils\get_config_value;
 
 /**
  * Initialize global admin tools auth if it's not present.
@@ -41,9 +44,10 @@ function init_global_admin_tools_auth( $display_log = true ) {
 		EE::success( sprintf( 'Global admin-tools auth added. Use `ee auth list global` to view credentials.' ) );
 	}
 
-	$launch = EE::launch( 'docker inspect -f "{{range .IPAM.Config}}{{.Gateway}}{{end}}" ee-global-frontend-network' );
-	$ip     = trim( $launch->stdout );
-	EE::runcommand( "auth create global  --ip='$ip'" );
+	ensure_global_network_initialized();
+
+	$frontend_subnet_ip = Option::get( 'frontend_subnet_ip' );
+	EE::runcommand( "auth update global --ip='$frontend_subnet_ip'" );
 }
 
 /**
