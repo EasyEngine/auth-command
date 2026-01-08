@@ -200,7 +200,7 @@ class Auth_Command extends EE_Command {
 		if ( 'default' === $site_url ) {
 			$this->generate_global_whitelist();
 		} else {
-			$this->generate_site_whitelist( $site_url );
+			$this->generate_site_whitelist( $site_url, $this->site_data );
 		}
 
 		reload_global_nginx_proxy();
@@ -371,7 +371,10 @@ class Auth_Command extends EE_Command {
 		}
 
 		foreach ( $sites as $site ) {
-			$this->generate_site_whitelist( $site );
+			// Fetch site data to get app_sub_type and alias_domains
+			$site_info = \EE\Model\Site::where( 'site_url', $site );
+			$site_data = ! empty( $site_info ) ? $site_info[0] : null;
+			$this->generate_site_whitelist( $site, $site_data );
 		}
 
 	}
@@ -380,12 +383,41 @@ class Auth_Command extends EE_Command {
 	 * Generates site whitelist files
 	 *
 	 * @param string $site_url
+	 * @param object $site_data Optional site data object containing app_sub_type and alias_domains
 	 *
 	 * @throws Exception
 	 */
-	private function generate_site_whitelist( string $site_url ) {
-		$site_whitelist_file = EE_ROOT_DIR . '/services/nginx-proxy/vhost.d/' . $site_url . '_acl';
-		$this->fs->remove( $site_whitelist_file );
+	private function generate_site_whitelist( string $site_url, $site_data = null ) {
+		// Collect all domains to generate whitelist files for
+		$domains = [ $site_url ];
+
+		// For subdomain multisites, add wildcard file
+		if ( $site_data && ! empty( $site_data->app_sub_type ) && 'subdom' === $site_data->app_sub_type ) {
+			$domains[] = '_wildcard.' . $site_url;
+		}
+
+		// Add alias domains (excluding main site_url)
+		if ( $site_data && ! empty( $site_data->alias_domains ) ) {
+			$alias_list = array_map( 'trim', explode( ',', $site_data->alias_domains ) );
+			foreach ( $alias_list as $alias ) {
+				if ( empty( $alias ) || $alias === $site_url ) {
+					continue;
+				}
+				// Replace *.domain with _wildcard.domain
+				if ( 0 === strpos( $alias, '*.' ) ) {
+					$domains[] = '_wildcard.' . substr( $alias, 2 );
+				} else {
+					$domains[] = $alias;
+					// For subdomain multisites, also add wildcard for non-wildcard alias domains
+					if ( ! empty( $site_data->app_sub_type ) && 'subdom' === $site_data->app_sub_type ) {
+						$domains[] = '_wildcard.' . $alias;
+					}
+				}
+			}
+		}
+
+		// Remove duplicates
+		$domains = array_unique( $domains );
 
 		$whitelists = array_column(
 			'default' === $site_url ? Whitelist::get_global_ips() :
@@ -396,7 +428,12 @@ class Auth_Command extends EE_Command {
 			'ip'
 		);
 
-		$this->put_ips_to_file( $site_whitelist_file, $whitelists );
+		// Generate whitelist files for all collected domains
+		foreach ( $domains as $domain ) {
+			$domain_whitelist_file = EE_ROOT_DIR . '/services/nginx-proxy/vhost.d/' . $domain . '_acl';
+			$this->fs->remove( $domain_whitelist_file );
+			$this->put_ips_to_file( $domain_whitelist_file, $whitelists );
+		}
 	}
 
 	/**
@@ -537,7 +574,7 @@ class Auth_Command extends EE_Command {
 		if ( 'default' === $site_url ) {
 			$this->generate_global_whitelist();
 		} else {
-			$this->generate_site_whitelist( $site_url );
+			$this->generate_site_whitelist( $site_url, $this->site_data );
 		}
 
 		reload_global_nginx_proxy();
@@ -684,7 +721,7 @@ class Auth_Command extends EE_Command {
 			if ( 'default' === $site_url ) {
 				$this->generate_global_whitelist();
 			} else {
-				$this->generate_site_whitelist( $site_url );
+				$this->generate_site_whitelist( $site_url, $this->site_data );
 			}
 
 			reload_global_nginx_proxy();
