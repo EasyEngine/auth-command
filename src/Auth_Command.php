@@ -315,6 +315,10 @@ class Auth_Command extends EE_Command {
 				if ( empty( $alias ) || $alias === $site_url ) {
 					continue;
 				}
+				// Skip *.site_url as it transforms to _wildcard.site_url (already added for subdomain multisite)
+				if ( ! empty( $site_data->app_sub_type ) && 'subdom' === $site_data->app_sub_type && '*.' . $site_url === $alias ) {
+					continue;
+				}
 				// Replace *.domain with _wildcard.domain
 				if ( 0 === strpos( $alias, '*.' ) ) {
 					$domains[] = '_wildcard.' . substr( $alias, 2 );
@@ -401,6 +405,10 @@ class Auth_Command extends EE_Command {
 			$alias_list = array_map( 'trim', explode( ',', $site_data->alias_domains ) );
 			foreach ( $alias_list as $alias ) {
 				if ( empty( $alias ) || $alias === $site_url ) {
+					continue;
+				}
+				// Skip *.site_url as it transforms to _wildcard.site_url (already added for subdomain multisite)
+				if ( ! empty( $site_data->app_sub_type ) && 'subdom' === $site_data->app_sub_type && '*.' . $site_url === $alias ) {
 					continue;
 				}
 				// Replace *.domain with _wildcard.domain
