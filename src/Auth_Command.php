@@ -300,6 +300,10 @@ class Auth_Command extends EE_Command {
 	 * @throws Exception
 	 */
 	private function generate_site_auth_files( string $site_url, $site_data = null ) {
+		// Always clean up wildcard file first (handles site type changes from subdom to regular)
+		$wildcard_file = EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/_wildcard.' . $site_url;
+		$this->fs->remove( $wildcard_file );
+
 		// Collect all domains to generate htpasswd files for
 		$domains = [ $site_url ];
 
@@ -401,6 +405,10 @@ class Auth_Command extends EE_Command {
 	 * @throws Exception
 	 */
 	private function generate_site_whitelist( string $site_url, $site_data = null ) {
+		// Always clean up wildcard file first (handles site type changes from subdom to regular)
+		$wildcard_file = EE_ROOT_DIR . '/services/nginx-proxy/vhost.d/_wildcard.' . $site_url . '_acl';
+		$this->fs->remove( $wildcard_file );
+
 		// Collect all domains to generate whitelist files for
 		$domains = [ $site_url ];
 
