@@ -333,6 +333,9 @@ class Auth_Command extends EE_Command {
 			Auth::where( 'site_url', $site_url )
 		);
 
+		// Remove duplicates (e.g., *.example.com alias + subdomain multisite both create _wildcard.example.com)
+		$domains = array_unique( $domains );
+
 		// Generate htpasswd files for all collected domains
 		foreach ( $domains as $domain ) {
 			$domain_auth_file = EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/' . $domain;
