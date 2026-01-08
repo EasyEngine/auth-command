@@ -340,6 +340,15 @@ class Auth_Command extends EE_Command {
 		// Remove duplicates (e.g., *.example.com alias + subdomain multisite both create _wildcard.example.com)
 		$domains = array_unique( $domains );
 
+		// If no auths exist, remove all htpasswd files for this site and its domains
+		if ( empty( $auths ) ) {
+			foreach ( $domains as $domain ) {
+				$domain_auth_file = EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/' . $domain;
+				$this->fs->remove( $domain_auth_file );
+			}
+			return;
+		}
+
 		// Generate htpasswd files for all collected domains
 		foreach ( $domains as $domain ) {
 			$domain_auth_file = EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/' . $domain;
@@ -435,6 +444,15 @@ class Auth_Command extends EE_Command {
 				),
 			'ip'
 		);
+
+		// If no whitelists exist, remove all whitelist files for this site and its domains
+		if ( empty( $whitelists ) ) {
+			foreach ( $domains as $domain ) {
+				$domain_whitelist_file = EE_ROOT_DIR . '/services/nginx-proxy/vhost.d/' . $domain . '_acl';
+				$this->fs->remove( $domain_whitelist_file );
+			}
+			return;
+		}
 
 		// Generate whitelist files for all collected domains
 		foreach ( $domains as $domain ) {
