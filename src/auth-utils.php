@@ -107,6 +107,24 @@ function get_site_auth_domains( string $site_url, $site_data ): array {
 }
 
 /**
+ * Removes the htpasswd and ACL files of the given domains.
+ *
+ * @param array $domains File names as returned by get_site_auth_domains().
+ */
+function remove_auth_files( array $domains ) {
+
+	$fs = new Filesystem();
+	foreach ( $domains as $domain ) {
+		$fs->remove(
+			[
+				EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/' . $domain,
+				EE_ROOT_DIR . '/services/nginx-proxy/vhost.d/' . $domain . '_acl',
+			]
+		);
+	}
+}
+
+/**
  * Generates auth files for a site.
  *
  * @param string              $site_url  URL of site.

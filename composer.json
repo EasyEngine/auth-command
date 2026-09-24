@@ -14,7 +14,8 @@
         },
         "files": [
             "auth-command.php",
-            "src/auth-utils.php"
+            "src/auth-utils.php",
+            "src/helper/hooks.php"
         ]
     },
     "extra": {
