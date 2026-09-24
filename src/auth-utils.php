@@ -11,6 +11,21 @@ use Symfony\Component\Filesystem\Filesystem;
 use function EE\Service\Utils\ensure_global_network_initialized;
 use function EE\Utils\get_config_value;
 
+// Global htpasswd/ACL file names that never belong to a site.
+const RESERVED_AUTH_FILE_NAMES = [ 'default', 'default_admin_tools' ];
+
+/**
+ * Checks whether a name is one of the global htpasswd/ACL file names, in any case.
+ *
+ * @param string $name File name.
+ *
+ * @return bool
+ */
+function is_reserved_auth_file_name( string $name ): bool {
+
+	return in_array( strtolower( $name ), RESERVED_AUTH_FILE_NAMES, true );
+}
+
 /**
  * Initialize global admin tools auth if it's not present.
  *
@@ -87,7 +102,7 @@ function get_auth_domain( string $domain ): string {
 function is_valid_alias_domain( string $domain ): bool {
 
 	// These would map onto the global auth and ACL files.
-	if ( in_array( $domain, [ 'default', 'default_admin_tools' ], true ) ) {
+	if ( is_reserved_auth_file_name( $domain ) ) {
 		return false;
 	}
 
@@ -206,8 +221,7 @@ function remove_auth_files( array $domains ): bool {
 	$removed = false;
 	foreach ( $domains as $domain ) {
 		$domain = (string) $domain;
-		// The global files never belong to a site.
-		if ( in_array( $domain, [ '', 'default', 'default_admin_tools' ], true ) ) {
+		if ( '' === $domain || is_reserved_auth_file_name( $domain ) ) {
 			continue;
 		}
 		$removed = remove_proxy_file( EE_ROOT_DIR . '/services/nginx-proxy/htpasswd', $domain ) || $removed;
@@ -263,7 +277,7 @@ function generate_site_auth_files( string $site_url, $site_data = null ) {
  */
 function add_site_auth_files( string $site_url, array $names ): bool {
 
-	$names = array_diff( array_unique( $names ), [ $site_url, 'default', 'default_admin_tools' ] );
+	$names = array_diff( array_unique( $names ), array_merge( [ $site_url ], RESERVED_AUTH_FILE_NAMES ) );
 
 	if ( empty( $names ) ) {
 		return false;
