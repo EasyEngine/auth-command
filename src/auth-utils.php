@@ -257,8 +257,6 @@ function generate_site_auth_files( string $site_url, $site_data = null ) {
 	$source = array_shift( $domains );
 
 	if ( ! write_htpasswd_file( $source, array_merge( Auth::get_global_auths(), $site_auths ) ) ) {
-		EE::warning( sprintf( 'Could not write the htpasswd file of %s.', $site_url ) );
-
 		return;
 	}
 
@@ -291,8 +289,6 @@ function add_site_auth_files( string $site_url, array $names ): bool {
 		if ( is_file( $dir . '/' . $site_url ) || write_htpasswd_file( $site_url, array_merge( Auth::get_global_auths(), $site_auths ) ) ) {
 			copy_proxy_file( $dir, $site_url, $names );
 			$written = true;
-		} else {
-			EE::warning( sprintf( 'Could not write the htpasswd file of %s.', $site_url ) );
 		}
 	}
 
@@ -313,6 +309,8 @@ function add_site_auth_files( string $site_url, array $names ): bool {
 /**
  * (Re)creates an htpasswd file in the proxy container with the given auth entries.
  *
+ * The file is replaced only once all entries are written; on failure the existing file is left unchanged.
+ *
  * @param string $name  File name inside the htpasswd directory.
  * @param array  $auths Auth models, or objects with `username` and `password`.
  *
@@ -320,18 +318,41 @@ function add_site_auth_files( string $site_url, array $names ): bool {
  */
 function write_htpasswd_file( string $name, array $auths ): bool {
 
-	$flags = 'bc';
+	if ( empty( $auths ) ) {
+		return true;
+	}
+
+	$dir     = EE_ROOT_DIR . '/services/nginx-proxy/htpasswd';
+	// No host name starts with a dot, so the proxy never uses the file while it is being built.
+	$tmp     = '.' . $name . '.tmp';
+	$flags   = 'bc';
+	$written = true;
+
 	foreach ( $auths as $auth ) {
 		// Keep the credentials out of ee.log.
 		$obfuscate = [ escapeshellarg( $auth->password ), escapeshellarg( $auth->username ) ];
 
-		if ( ! EE::exec( htpasswd_command( $flags, $name, $auth->username, $auth->password ), false, false, $obfuscate ) ) {
-			return false;
+		if ( ! EE::exec( htpasswd_command( $flags, $tmp, $auth->username, $auth->password ), false, false, $obfuscate ) ) {
+			$written = false;
+			break;
 		}
 		$flags = 'b';
 	}
 
-	return true;
+	if ( $written ) {
+		try {
+			( new Filesystem() )->rename( $dir . '/' . $tmp, $dir . '/' . $name, true );
+		} catch ( \Exception $e ) {
+			$written = false;
+		}
+	}
+
+	if ( ! $written ) {
+		remove_proxy_file( $dir, $tmp );
+		EE::warning( sprintf( 'Could not write the htpasswd file %s, so it was left unchanged.', $name ) );
+	}
+
+	return $written;
 }
 
 /**
