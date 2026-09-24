@@ -173,9 +173,17 @@ function copy_proxy_file( string $dir, string $source, array $targets ) {
 		if ( ! is_proxy_file_name( $target ) || $target === $source ) {
 			continue;
 		}
-		$fs->copy( $dir . '/' . $source, $dir . '/' . $target, true );
-		// Don't depend on the umask: nginx workers read these files.
-		$fs->chmod( $dir . '/' . $target, $mode );
+		// Built under a name no host matches, then renamed, so the proxy never reads a partial copy.
+		$tmp = '.' . $target . '.tmp';
+		try {
+			$fs->copy( $dir . '/' . $source, $dir . '/' . $tmp, true );
+			// Don't depend on the umask: nginx workers read these files.
+			$fs->chmod( $dir . '/' . $tmp, $mode );
+			$fs->rename( $dir . '/' . $tmp, $dir . '/' . $target, true );
+		} catch ( \Exception $e ) {
+			remove_proxy_file( $dir, $tmp );
+			EE::warning( sprintf( 'Could not copy %s to %s, so it was left unchanged.', $source, $target ) );
+		}
 	}
 }
 
