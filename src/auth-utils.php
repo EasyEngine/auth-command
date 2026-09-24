@@ -257,11 +257,10 @@ function generate_site_auth_files( string $site_url, $site_data = null, array $e
 
 	$source = array_shift( $domains );
 
-	if ( ! write_htpasswd_file( $source, array_merge( Auth::get_global_auths(), $site_auths ) ) ) {
-		return;
+	// If it can't be rewritten (e.g. the proxy is stopped during an upgrade), still spread the existing file to the other domains.
+	if ( write_htpasswd_file( $source, array_merge( Auth::get_global_auths(), $site_auths ) ) || is_file( $dir . '/' . $source ) ) {
+		copy_proxy_file( $dir, $source, $domains );
 	}
-
-	copy_proxy_file( $dir, $source, $domains );
 }
 
 /**
