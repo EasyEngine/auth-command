@@ -20,6 +20,7 @@ use Symfony\Component\Filesystem\Filesystem;
 use function EE\Auth\Utils\generate_site_auth_files;
 use function EE\Auth\Utils\generate_site_whitelist;
 use function EE\Auth\Utils\verify_htpasswd_is_present;
+use function EE\Auth\Utils\write_htpasswd_file;
 use function EE\Site\Utils\auto_site_name;
 use function EE\Site\Utils\get_site_info;
 use function EE\Site\Utils\reload_global_nginx_proxy;
@@ -257,7 +258,7 @@ class Auth_Command extends EE_Command {
 		$global_admin_tools_auth = Auth::get_global_admin_tools_auth();
 
 		if ( ! empty( $global_admin_tools_auth ) ) {
-			EE::exec( sprintf( 'docker exec %s htpasswd -bc /etc/nginx/htpasswd/default_admin_tools %s %s', EE_PROXY_TYPE, $global_admin_tools_auth->username, $global_admin_tools_auth->password ) );
+			write_htpasswd_file( 'default_admin_tools', $global_admin_tools_auth );
 		} else {
 			$this->fs->remove( EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/default_admin_tools' );
 			$this->fs->remove( EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/default' );
@@ -266,15 +267,7 @@ class Auth_Command extends EE_Command {
 			if ( empty( $auths ) ) {
 				$this->regen_admin_tools_auth();
 			} else {
-				foreach ( $auths as $key => $auth ) {
-					$flags = 'b';
-
-					if ( 0 === $key ) {
-						$flags = 'bc';
-					}
-
-					EE::exec( sprintf( 'docker exec %s htpasswd -%s /etc/nginx/htpasswd/default %s %s', EE_PROXY_TYPE, $flags, $auth->username, $auth->password ) );
-				}
+				write_htpasswd_file( 'default', $auths );
 			}
 
 			$sites = array_unique(

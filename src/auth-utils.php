@@ -40,7 +40,7 @@ function init_global_admin_tools_auth( $display_log = true ) {
 
 	Auth::create( $auth_data );
 
-	EE::exec( sprintf( 'docker exec %s htpasswd -bc /etc/nginx/htpasswd/default_admin_tools %s %s', EE_PROXY_TYPE, $auth_data['username'], $auth_data['password'] ) );
+	EE::exec( htpasswd_command( 'bc', 'default_admin_tools', $auth_data['username'], $auth_data['password'] ) );
 
 	if ( $display_log ) {
 		EE::success( sprintf( 'Global admin-tools auth added. Use `ee auth list global` to view credentials.' ) );
@@ -133,11 +133,45 @@ function generate_site_auth_files( string $site_url, $site_data = null ) {
 	$auths = array_merge( Auth::get_global_auths(), $site_auths );
 
 	foreach ( $domains as $domain ) {
-		foreach ( $auths as $key => $auth ) {
-			$flags = 0 === $key ? 'bc' : 'b';
-			EE::exec( sprintf( 'docker exec %s htpasswd -%s /etc/nginx/htpasswd/%s %s %s', EE_PROXY_TYPE, $flags, $domain, $auth->username, $auth->password ) );
-		}
+		write_htpasswd_file( $domain, $auths );
 	}
+}
+
+/**
+ * (Re)creates an htpasswd file in the proxy container with the given auth entries.
+ *
+ * @param string $name  File name inside the htpasswd directory.
+ * @param array  $auths Auth models.
+ */
+function write_htpasswd_file( string $name, array $auths ) {
+
+	$flags = 'bc';
+	foreach ( $auths as $auth ) {
+		EE::exec( htpasswd_command( $flags, $name, $auth->username, $auth->password ) );
+		$flags = 'b';
+	}
+}
+
+/**
+ * Builds the `htpasswd` command run in the proxy container, with shell-escaped arguments.
+ *
+ * @param string $flags    htpasswd flags without the leading dash.
+ * @param string $name     File name inside the htpasswd directory.
+ * @param string $username Username.
+ * @param string $password Password.
+ *
+ * @return string
+ */
+function htpasswd_command( string $flags, string $name, string $username, string $password ): string {
+
+	return sprintf(
+		'docker exec %s htpasswd -%s %s %s %s',
+		EE_PROXY_TYPE,
+		$flags,
+		escapeshellarg( '/etc/nginx/htpasswd/' . $name ),
+		escapeshellarg( $username ),
+		escapeshellarg( $password )
+	);
 }
 
 /**
