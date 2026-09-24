@@ -118,9 +118,6 @@ function generate_site_auth_files( string $site_url, $site_data = null ) {
 
 	$fs = new Filesystem();
 
-	// Always clean up wildcard file first (handles site type changes from subdom to regular)
-	$fs->remove( EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/_wildcard.' . $site_url );
-
 	$domains = get_site_auth_domains( $site_url, $site_data );
 	$auths   = array_merge(
 		Auth::get_global_auths(),
@@ -148,9 +145,6 @@ function generate_site_auth_files( string $site_url, $site_data = null ) {
 function generate_site_whitelist( string $site_url, $site_data = null ) {
 
 	$fs = new Filesystem();
-
-	// Always clean up wildcard file first (handles site type changes from subdom to regular)
-	$fs->remove( EE_ROOT_DIR . '/services/nginx-proxy/vhost.d/_wildcard.' . $site_url . '_acl' );
 
 	$domains    = get_site_auth_domains( $site_url, $site_data );
 	$whitelists = array_column(
