@@ -27,18 +27,18 @@ function cleanup_auth_and_whitelist( $site_url ) {
 		return;
 	}
 
-	foreach ( Auth::where( [ 'site_url' => $site_url ] ) as $auth ) {
-		$auth->delete();
-	}
+	$rows = array_merge( Auth::where( [ 'site_url' => $site_url ] ), Whitelist::where( [ 'site_url' => $site_url ] ) );
 
-	foreach ( Whitelist::where( [ 'site_url' => $site_url ] ) as $whitelist ) {
-		$whitelist->delete();
+	foreach ( $rows as $row ) {
+		$row->delete();
 	}
 
 	// Files may exist without site entries (e.g. left by older versions), so always remove them.
-	remove_auth_files( get_site_auth_domains( $site_url, $site ) );
+	$removed = remove_auth_files( get_site_auth_domains( $site_url, $site ) );
 
-	\EE\Site\Utils\reload_global_nginx_proxy();
+	if ( $removed || ! empty( $rows ) ) {
+		\EE\Site\Utils\reload_global_nginx_proxy();
+	}
 }
 
 /**
