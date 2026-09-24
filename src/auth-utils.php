@@ -173,6 +173,28 @@ function remove_proxy_file( string $dir, string $name ): bool {
 }
 
 /**
+ * Copies a file inside a proxy directory to other names in the same directory.
+ *
+ * @param string $dir     Directory path.
+ * @param string $source  Source file name.
+ * @param array  $targets Target file names.
+ */
+function copy_proxy_file( string $dir, string $source, array $targets ) {
+
+	$fs   = new Filesystem();
+	$mode = fileperms( $dir . '/' . $source ) & 0777;
+
+	foreach ( $targets as $target ) {
+		if ( ! is_proxy_file_name( $target ) || $target === $source ) {
+			continue;
+		}
+		$fs->copy( $dir . '/' . $source, $dir . '/' . $target, true );
+		// Don't depend on the umask: nginx workers read these files.
+		$fs->chmod( $dir . '/' . $target, $mode );
+	}
+}
+
+/**
  * Removes the htpasswd and ACL files of the given domains.
  *
  * @param array $domains File names as returned by get_site_auth_domains().
@@ -205,23 +227,28 @@ function remove_auth_files( array $domains ): bool {
  */
 function generate_site_auth_files( string $site_url, $site_data = null ) {
 
+	$dir        = EE_ROOT_DIR . '/services/nginx-proxy/htpasswd';
 	$domains    = get_site_auth_domains( $site_url, $site_data );
 	$site_auths = Auth::where( 'site_url', $site_url );
 
-	foreach ( $domains as $domain ) {
-		remove_proxy_file( EE_ROOT_DIR . '/services/nginx-proxy/htpasswd', $domain );
-	}
-
 	// Without site entries the proxy falls back to the global `default` file.
 	if ( empty( $site_auths ) ) {
+		foreach ( $domains as $domain ) {
+			remove_proxy_file( $dir, $domain );
+		}
+
 		return;
 	}
 
-	$auths = array_merge( Auth::get_global_auths(), $site_auths );
+	$source = array_shift( $domains );
 
-	foreach ( $domains as $domain ) {
-		write_htpasswd_file( $domain, $auths );
+	if ( ! write_htpasswd_file( $source, array_merge( Auth::get_global_auths(), $site_auths ) ) ) {
+		EE::warning( sprintf( 'Could not write the htpasswd file of %s.', $site_url ) );
+
+		return;
 	}
+
+	copy_proxy_file( $dir, $source, $domains );
 }
 
 /**
@@ -229,14 +256,20 @@ function generate_site_auth_files( string $site_url, $site_data = null ) {
  *
  * @param string $name  File name inside the htpasswd directory.
  * @param array  $auths Auth models.
+ *
+ * @return bool Whether all entries were written.
  */
-function write_htpasswd_file( string $name, array $auths ) {
+function write_htpasswd_file( string $name, array $auths ): bool {
 
 	$flags = 'bc';
 	foreach ( $auths as $auth ) {
-		EE::exec( htpasswd_command( $flags, $name, $auth->username, $auth->password ) );
+		if ( ! EE::exec( htpasswd_command( $flags, $name, $auth->username, $auth->password ) ) ) {
+			return false;
+		}
 		$flags = 'b';
 	}
+
+	return true;
 }
 
 /**
