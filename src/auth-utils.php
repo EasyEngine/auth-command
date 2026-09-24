@@ -106,7 +106,7 @@ function is_valid_alias_domain( string $domain ): bool {
 		return false;
 	}
 
-	return 1 === preg_match( '/^(\*\.)?[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*$/D', $domain );
+	return 1 === preg_match( '/^(\*\.)?[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*$/D', $domain );
 }
 
 /**
