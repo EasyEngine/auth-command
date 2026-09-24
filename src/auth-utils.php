@@ -9,22 +9,9 @@ use EE\Model\Option;
 use EE\Model\Whitelist;
 use Symfony\Component\Filesystem\Filesystem;
 use function EE\Service\Utils\ensure_global_network_initialized;
+use function EE\Site\Utils\is_reserved_proxy_file_name;
+use function EE\Site\Utils\is_valid_alias_domain;
 use function EE\Utils\get_config_value;
-
-// Global htpasswd/ACL file names that never belong to a site.
-const RESERVED_AUTH_FILE_NAMES = [ 'default', 'default_admin_tools' ];
-
-/**
- * Checks whether a name is one of the global htpasswd/ACL file names, in any case.
- *
- * @param string $name File name.
- *
- * @return bool
- */
-function is_reserved_auth_file_name( string $name ): bool {
-
-	return in_array( strtolower( $name ), RESERVED_AUTH_FILE_NAMES, true );
-}
 
 /**
  * Initialize global admin tools auth if it's not present.
@@ -93,24 +80,7 @@ function get_auth_domain( string $domain ): string {
 }
 
 /**
- * Checks that an alias domain is a plain hostname or `*.hostname`, so it is safe to use as an htpasswd/ACL file name.
- *
- * @param string $domain Alias domain.
- *
- * @return bool
- */
-function is_valid_alias_domain( string $domain ): bool {
-
-	// These would map onto the global auth and ACL files.
-	if ( is_reserved_auth_file_name( $domain ) ) {
-		return false;
-	}
-
-	return 1 === preg_match( '/^(\*\.)?[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*$/D', $domain );
-}
-
-/**
- * Maps alias domains to their htpasswd/ACL file names, skipping unsafe ones.
+ * Maps alias domains to their htpasswd/ACL file names, skipping the ones site-command would reject.
  *
  * @param array $aliases Alias domains.
  *
@@ -221,7 +191,7 @@ function remove_auth_files( array $domains ): bool {
 	$removed = false;
 	foreach ( $domains as $domain ) {
 		$domain = (string) $domain;
-		if ( '' === $domain || is_reserved_auth_file_name( $domain ) ) {
+		if ( '' === $domain || is_reserved_proxy_file_name( $domain ) ) {
 			continue;
 		}
 		$removed = remove_proxy_file( EE_ROOT_DIR . '/services/nginx-proxy/htpasswd', $domain ) || $removed;
