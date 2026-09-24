@@ -278,10 +278,7 @@ class Auth_Command extends EE_Command {
 			);
 
 			foreach ( $sites as $site ) {
-				// Fetch site data to get app_sub_type and alias_domains
-				$site_info = \EE\Model\Site::where( 'site_url', $site );
-				$site_data = ! empty( $site_info ) ? $site_info[0] : null;
-				generate_site_auth_files( $site, $site_data );
+				generate_site_auth_files( $site, \EE\Model\Site::find( $site ) ?: null );
 			}
 		}
 	}
@@ -305,10 +302,7 @@ class Auth_Command extends EE_Command {
 		}
 
 		foreach ( $sites as $site ) {
-			// Fetch site data to get app_sub_type and alias_domains
-			$site_info = \EE\Model\Site::where( 'site_url', $site );
-			$site_data = ! empty( $site_info ) ? $site_info[0] : null;
-			generate_site_whitelist( $site, $site_data );
+			generate_site_whitelist( $site, \EE\Model\Site::find( $site ) ?: null );
 		}
 
 	}
