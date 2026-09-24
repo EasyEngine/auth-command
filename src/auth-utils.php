@@ -6,6 +6,8 @@ namespace EE\Auth\Utils;
 use EE;
 use EE\Model\Auth;
 use EE\Model\Option;
+use EE\Model\Whitelist;
+use Symfony\Component\Filesystem\Filesystem;
 use function EE\Service\Utils\ensure_global_network_initialized;
 use function EE\Utils\get_config_value;
 
@@ -61,4 +63,131 @@ function verify_htpasswd_is_present() {
 		return;
 	}
 	EE::error( sprintf( 'Could not find apache2-utils installed in %s.', EE_PROXY_TYPE ) );
+}
+
+/**
+ * Maps a domain to its htpasswd/ACL file name: `*.example.com` becomes `_wildcard.example.com`.
+ *
+ * @param string $domain Domain name.
+ *
+ * @return string
+ */
+function get_auth_domain( string $domain ): string {
+
+	return 0 === strpos( $domain, '*.' ) ? '_wildcard.' . substr( $domain, 2 ) : $domain;
+}
+
+/**
+ * Collects the htpasswd/ACL file names of a site: the site itself, `_wildcard.<site>` for subdomain multisites, and its alias domains.
+ *
+ * @param string              $site_url  URL of site.
+ * @param \EE\Model\Site|null $site_data Site model.
+ *
+ * @return array
+ */
+function get_site_auth_domains( string $site_url, $site_data ): array {
+
+	$is_subdom = ! empty( $site_data->app_sub_type ) && 'subdom' === $site_data->app_sub_type;
+	$domains   = [ $site_url ];
+
+	if ( $is_subdom ) {
+		$domains[] = '_wildcard.' . $site_url;
+	}
+
+	if ( ! empty( $site_data->alias_domains ) ) {
+		foreach ( array_map( 'trim', explode( ',', $site_data->alias_domains ) ) as $alias ) {
+			if ( '' === $alias ) {
+				continue;
+			}
+			$domains[] = get_auth_domain( $alias );
+			if ( $is_subdom && 0 !== strpos( $alias, '*.' ) ) {
+				$domains[] = '_wildcard.' . $alias;
+			}
+		}
+	}
+
+	return array_values( array_unique( $domains ) );
+}
+
+/**
+ * Generates auth files for a site.
+ *
+ * @param string              $site_url  URL of site.
+ * @param \EE\Model\Site|null $site_data Site model.
+ *
+ * @throws \Exception
+ */
+function generate_site_auth_files( string $site_url, $site_data = null ) {
+
+	$fs = new Filesystem();
+
+	// Always clean up wildcard file first (handles site type changes from subdom to regular)
+	$fs->remove( EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/_wildcard.' . $site_url );
+
+	$domains = get_site_auth_domains( $site_url, $site_data );
+	$auths   = array_merge(
+		Auth::get_global_auths(),
+		Auth::where( 'site_url', $site_url )
+	);
+
+	foreach ( $domains as $domain ) {
+		$fs->remove( EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/' . $domain );
+
+		foreach ( $auths as $key => $auth ) {
+			$flags = 0 === $key ? 'bc' : 'b';
+			EE::exec( sprintf( 'docker exec %s htpasswd -%s /etc/nginx/htpasswd/%s %s %s', EE_PROXY_TYPE, $flags, $domain, $auth->username, $auth->password ) );
+		}
+	}
+}
+
+/**
+ * Generates whitelist files for a site.
+ *
+ * @param string              $site_url  URL of site, `default` for global.
+ * @param \EE\Model\Site|null $site_data Site model.
+ *
+ * @throws \Exception
+ */
+function generate_site_whitelist( string $site_url, $site_data = null ) {
+
+	$fs = new Filesystem();
+
+	// Always clean up wildcard file first (handles site type changes from subdom to regular)
+	$fs->remove( EE_ROOT_DIR . '/services/nginx-proxy/vhost.d/_wildcard.' . $site_url . '_acl' );
+
+	$domains    = get_site_auth_domains( $site_url, $site_data );
+	$whitelists = array_column(
+		'default' === $site_url ? Whitelist::get_global_ips() :
+			array_merge(
+				Whitelist::get_global_ips(),
+				Whitelist::where( 'site_url', $site_url )
+			),
+		'ip'
+	);
+
+	foreach ( $domains as $domain ) {
+		$domain_whitelist_file = EE_ROOT_DIR . '/services/nginx-proxy/vhost.d/' . $domain . '_acl';
+		$fs->remove( $domain_whitelist_file );
+		put_ips_to_file( $domain_whitelist_file, $whitelists );
+	}
+}
+
+/**
+ * Function to put list of ip's into a file.
+ *
+ * @param string $file Path of file to write ip's in.
+ * @param array  $ips  List of ip's.
+ */
+function put_ips_to_file( string $file, array $ips ) {
+
+	if ( empty( $ips ) ) {
+		return;
+	}
+
+	$file_content = 'satisfy any;' . PHP_EOL;
+	foreach ( $ips as $ip ) {
+		$file_content .= "allow $ip;" . PHP_EOL;
+	}
+	$file_content .= 'deny all;';
+	( new Filesystem() )->dumpFile( $file, $file_content );
 }
