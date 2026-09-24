@@ -40,7 +40,7 @@ function init_global_admin_tools_auth( $display_log = true ) {
 
 	Auth::create( $auth_data );
 
-	EE::exec( htpasswd_command( 'bc', 'default_admin_tools', $auth_data['username'], $auth_data['password'] ) );
+	write_htpasswd_file( 'default_admin_tools', [ (object) $auth_data ] );
 
 	if ( $display_log ) {
 		EE::success( sprintf( 'Global admin-tools auth added. Use `ee auth list global` to view credentials.' ) );
@@ -255,7 +255,7 @@ function generate_site_auth_files( string $site_url, $site_data = null ) {
  * (Re)creates an htpasswd file in the proxy container with the given auth entries.
  *
  * @param string $name  File name inside the htpasswd directory.
- * @param array  $auths Auth models.
+ * @param array  $auths Auth models, or objects with `username` and `password`.
  *
  * @return bool Whether all entries were written.
  */
@@ -263,7 +263,10 @@ function write_htpasswd_file( string $name, array $auths ): bool {
 
 	$flags = 'bc';
 	foreach ( $auths as $auth ) {
-		if ( ! EE::exec( htpasswd_command( $flags, $name, $auth->username, $auth->password ) ) ) {
+		// Keep the credentials out of ee.log.
+		$obfuscate = [ escapeshellarg( $auth->password ), escapeshellarg( $auth->username ) ];
+
+		if ( ! EE::exec( htpasswd_command( $flags, $name, $auth->username, $auth->password ), false, false, $obfuscate ) ) {
 			return false;
 		}
 		$flags = 'b';
