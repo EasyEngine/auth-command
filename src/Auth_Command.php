@@ -23,6 +23,7 @@ use function EE\Auth\Utils\verify_htpasswd_is_present;
 use function EE\Auth\Utils\write_htpasswd_file;
 use function EE\Site\Utils\auto_site_name;
 use function EE\Site\Utils\get_site_info;
+use function EE\Site\Utils\is_reserved_proxy_file_name;
 use function EE\Site\Utils\reload_global_nginx_proxy;
 
 class Auth_Command extends EE_Command {
@@ -260,14 +261,15 @@ class Auth_Command extends EE_Command {
 		if ( ! empty( $global_admin_tools_auth ) ) {
 			write_htpasswd_file( 'default_admin_tools', $global_admin_tools_auth );
 		} else {
-			$this->fs->remove( EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/default_admin_tools' );
-			$this->fs->remove( EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/default' );
 			$auths = Auth::get_global_auths();
 
 			if ( empty( $auths ) ) {
+				$this->fs->remove( EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/default_admin_tools' );
+				$this->fs->remove( EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/default' );
 				$this->regen_admin_tools_auth();
-			} else {
-				write_htpasswd_file( 'default', $auths );
+			} elseif ( write_htpasswd_file( 'default', $auths ) ) {
+				// Admin tools prefer default_admin_tools, so drop it only once `default` is written; on failure both files keep protecting.
+				$this->fs->remove( EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/default_admin_tools' );
 			}
 
 			$sites = array_unique(
@@ -278,7 +280,10 @@ class Auth_Command extends EE_Command {
 			);
 
 			foreach ( $sites as $site ) {
-				generate_site_auth_files( $site, \EE\Model\Site::find( $site ) ?: null );
+				// The global files were handled above.
+				if ( ! is_reserved_proxy_file_name( $site ) ) {
+					generate_site_auth_files( $site, \EE\Model\Site::find( $site ) ?: null );
+				}
 			}
 		}
 	}
