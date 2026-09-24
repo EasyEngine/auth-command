@@ -252,6 +252,51 @@ function generate_site_auth_files( string $site_url, $site_data = null ) {
 }
 
 /**
+ * Writes a site's current htpasswd and ACL files for extra file names, e.g. of alias domains that are about to be served.
+ *
+ * Only writes the files the site has own entries for, so other names keep falling back to the global files.
+ *
+ * @param string $site_url URL of site.
+ * @param array  $names    File names as returned by get_auth_domain().
+ *
+ * @return bool Whether any file was written.
+ */
+function add_site_auth_files( string $site_url, array $names ): bool {
+
+	$names = array_diff( array_unique( $names ), [ $site_url, 'default', 'default_admin_tools' ] );
+
+	if ( empty( $names ) ) {
+		return false;
+	}
+
+	$written    = false;
+	$dir        = EE_ROOT_DIR . '/services/nginx-proxy/htpasswd';
+	$site_auths = Auth::where( 'site_url', $site_url );
+
+	if ( ! empty( $site_auths ) ) {
+		if ( is_file( $dir . '/' . $site_url ) || write_htpasswd_file( $site_url, array_merge( Auth::get_global_auths(), $site_auths ) ) ) {
+			copy_proxy_file( $dir, $site_url, $names );
+			$written = true;
+		} else {
+			EE::warning( sprintf( 'Could not write the htpasswd file of %s.', $site_url ) );
+		}
+	}
+
+	$ips = get_site_whitelist_ips( $site_url );
+
+	if ( ! empty( $ips ) ) {
+		foreach ( $names as $name ) {
+			if ( is_proxy_file_name( $name ) ) {
+				put_ips_to_file( EE_ROOT_DIR . '/services/nginx-proxy/vhost.d/' . $name . '_acl', $ips );
+				$written = true;
+			}
+		}
+	}
+
+	return $written;
+}
+
+/**
  * (Re)creates an htpasswd file in the proxy container with the given auth entries.
  *
  * @param string $name  File name inside the htpasswd directory.
@@ -298,6 +343,27 @@ function htpasswd_command( string $flags, string $name, string $username, string
 }
 
 /**
+ * Gets the IPs to whitelist on a site: global and site entries, or none when the site has no own entries.
+ *
+ * @param string $site_url URL of site, `default` for global.
+ *
+ * @return array
+ */
+function get_site_whitelist_ips( string $site_url ): array {
+
+	$site_ips = Whitelist::where( 'site_url', $site_url );
+
+	if ( empty( $site_ips ) ) {
+		return [];
+	}
+
+	return array_column(
+		'default' === $site_url ? $site_ips : array_merge( Whitelist::get_global_ips(), $site_ips ),
+		'ip'
+	);
+}
+
+/**
  * Generates whitelist files for a site.
  *
  * @param string              $site_url  URL of site, `default` for global.
@@ -307,25 +373,17 @@ function htpasswd_command( string $flags, string $name, string $username, string
  */
 function generate_site_whitelist( string $site_url, $site_data = null ) {
 
-	$domains  = get_site_auth_domains( $site_url, $site_data );
-	$site_ips = Whitelist::where( 'site_url', $site_url );
+	$dir     = EE_ROOT_DIR . '/services/nginx-proxy/vhost.d';
+	$domains = get_site_auth_domains( $site_url, $site_data );
+	$ips     = get_site_whitelist_ips( $site_url );
 
 	foreach ( $domains as $domain ) {
-		remove_proxy_file( EE_ROOT_DIR . '/services/nginx-proxy/vhost.d', $domain . '_acl' );
-	}
-
-	// Without site entries the proxy falls back to `default_acl`.
-	if ( empty( $site_ips ) ) {
-		return;
-	}
-
-	$whitelists = array_column(
-		'default' === $site_url ? $site_ips : array_merge( Whitelist::get_global_ips(), $site_ips ),
-		'ip'
-	);
-
-	foreach ( $domains as $domain ) {
-		put_ips_to_file( EE_ROOT_DIR . '/services/nginx-proxy/vhost.d/' . $domain . '_acl', $whitelists );
+		// Without site entries the proxy falls back to `default_acl`.
+		if ( empty( $ips ) ) {
+			remove_proxy_file( $dir, $domain . '_acl' );
+		} else {
+			put_ips_to_file( $dir . '/' . $domain . '_acl', $ips );
+		}
 	}
 }
 
