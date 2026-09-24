@@ -100,9 +100,6 @@ function get_site_auth_domains( string $site_url, $site_data ): array {
 				continue;
 			}
 			$domains[] = get_auth_domain( $alias );
-			if ( $is_subdom && 0 !== strpos( $alias, '*.' ) ) {
-				$domains[] = '_wildcard.' . $alias;
-			}
 		}
 	}
 
