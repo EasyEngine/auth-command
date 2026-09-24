@@ -49,7 +49,7 @@ class RegenerateSiteAuthFiles extends Base {
 	}
 
 	/**
-	 * Nothing to revert: the regenerated files are also valid for the previous version.
+	 * Not reverted. The files need the nginx-proxy image of the same release: the previous image also applies `_wildcard.*` files to sibling sites.
 	 */
 	public function down() {
 	}
