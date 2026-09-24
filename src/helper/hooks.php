@@ -9,7 +9,7 @@ use EE\Model\Site;
 use EE\Model\Whitelist;
 use function EE\Auth\Utils\generate_site_auth_files;
 use function EE\Auth\Utils\generate_site_whitelist;
-use function EE\Auth\Utils\get_auth_domain;
+use function EE\Auth\Utils\get_alias_auth_domains;
 use function EE\Auth\Utils\get_site_auth_domains;
 use function EE\Auth\Utils\remove_auth_files;
 
@@ -55,18 +55,12 @@ function update_auth_on_alias_domains_change( $site_url, $added_domains = [], $r
 		return;
 	}
 
-	$reload  = false;
-	$removed = [];
-
-	foreach ( (array) $removed_domains as $domain ) {
-		$removed[] = get_auth_domain( trim( $domain ) );
-	}
+	$reload = false;
 
 	// Keep files the site still uses, e.g. _wildcard.<site> of a subdomain multisite.
-	$removed = array_diff( $removed, get_site_auth_domains( $site_url, $site ) );
+	$removed = array_diff( get_alias_auth_domains( (array) $removed_domains ), get_site_auth_domains( $site_url, $site ) );
 
-	if ( ! empty( $removed ) ) {
-		remove_auth_files( $removed );
+	if ( remove_auth_files( $removed ) ) {
 		$reload = true;
 	}
 

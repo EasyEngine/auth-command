@@ -78,6 +78,43 @@ function get_auth_domain( string $domain ): string {
 }
 
 /**
+ * Checks that an alias domain is a plain hostname or `*.hostname`, so it is safe to use as an htpasswd/ACL file name.
+ *
+ * @param string $domain Alias domain.
+ *
+ * @return bool
+ */
+function is_valid_alias_domain( string $domain ): bool {
+
+	// These would map onto the global auth and ACL files.
+	if ( in_array( $domain, [ 'default', 'default_admin_tools' ], true ) ) {
+		return false;
+	}
+
+	return 1 === preg_match( '/^(\*\.)?[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*$/D', $domain );
+}
+
+/**
+ * Maps alias domains to their htpasswd/ACL file names, skipping unsafe ones.
+ *
+ * @param array $aliases Alias domains.
+ *
+ * @return array
+ */
+function get_alias_auth_domains( array $aliases ): array {
+
+	$domains = [];
+	foreach ( $aliases as $alias ) {
+		$alias = trim( (string) $alias );
+		if ( is_valid_alias_domain( $alias ) ) {
+			$domains[] = get_auth_domain( $alias );
+		}
+	}
+
+	return $domains;
+}
+
+/**
  * Collects the htpasswd/ACL file names of a site: the site itself, `_wildcard.<site>` for subdomain multisites, and its alias domains.
  *
  * @param string              $site_url  URL of site.
@@ -95,33 +132,67 @@ function get_site_auth_domains( string $site_url, $site_data ): array {
 	}
 
 	if ( ! empty( $site_data->alias_domains ) ) {
-		foreach ( array_map( 'trim', explode( ',', $site_data->alias_domains ) ) as $alias ) {
-			if ( '' === $alias ) {
-				continue;
-			}
-			$domains[] = get_auth_domain( $alias );
-		}
+		$domains = array_merge( $domains, get_alias_auth_domains( explode( ',', $site_data->alias_domains ) ) );
 	}
 
 	return array_values( array_unique( $domains ) );
 }
 
 /**
+ * Checks that a name refers to an entry directly inside a directory, not the directory itself or anything outside it.
+ *
+ * @param string $name File name.
+ *
+ * @return bool
+ */
+function is_proxy_file_name( string $name ): bool {
+
+	return '' !== $name && '.' !== $name && '..' !== $name && false === strpbrk( $name, "/\\\0" );
+}
+
+/**
+ * Removes a regular file directly inside a proxy directory.
+ *
+ * @param string $dir  Directory path.
+ * @param string $name File name.
+ *
+ * @return bool Whether the file was removed.
+ */
+function remove_proxy_file( string $dir, string $name ): bool {
+
+	$file = $dir . '/' . $name;
+
+	// An empty name would make Filesystem::remove() wipe the whole directory.
+	if ( ! is_proxy_file_name( $name ) || ! is_file( $file ) ) {
+		return false;
+	}
+
+	( new Filesystem() )->remove( $file );
+
+	return true;
+}
+
+/**
  * Removes the htpasswd and ACL files of the given domains.
  *
  * @param array $domains File names as returned by get_site_auth_domains().
+ *
+ * @return bool Whether any file was removed.
  */
-function remove_auth_files( array $domains ) {
+function remove_auth_files( array $domains ): bool {
 
-	$fs = new Filesystem();
+	$removed = false;
 	foreach ( $domains as $domain ) {
-		$fs->remove(
-			[
-				EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/' . $domain,
-				EE_ROOT_DIR . '/services/nginx-proxy/vhost.d/' . $domain . '_acl',
-			]
-		);
+		$domain = (string) $domain;
+		// The global files never belong to a site.
+		if ( in_array( $domain, [ '', 'default', 'default_admin_tools' ], true ) ) {
+			continue;
+		}
+		$removed = remove_proxy_file( EE_ROOT_DIR . '/services/nginx-proxy/htpasswd', $domain ) || $removed;
+		$removed = remove_proxy_file( EE_ROOT_DIR . '/services/nginx-proxy/vhost.d', $domain . '_acl' ) || $removed;
 	}
+
+	return $removed;
 }
 
 /**
@@ -134,13 +205,11 @@ function remove_auth_files( array $domains ) {
  */
 function generate_site_auth_files( string $site_url, $site_data = null ) {
 
-	$fs = new Filesystem();
-
 	$domains    = get_site_auth_domains( $site_url, $site_data );
 	$site_auths = Auth::where( 'site_url', $site_url );
 
 	foreach ( $domains as $domain ) {
-		$fs->remove( EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/' . $domain );
+		remove_proxy_file( EE_ROOT_DIR . '/services/nginx-proxy/htpasswd', $domain );
 	}
 
 	// Without site entries the proxy falls back to the global `default` file.
@@ -202,13 +271,11 @@ function htpasswd_command( string $flags, string $name, string $username, string
  */
 function generate_site_whitelist( string $site_url, $site_data = null ) {
 
-	$fs = new Filesystem();
-
 	$domains  = get_site_auth_domains( $site_url, $site_data );
 	$site_ips = Whitelist::where( 'site_url', $site_url );
 
 	foreach ( $domains as $domain ) {
-		$fs->remove( EE_ROOT_DIR . '/services/nginx-proxy/vhost.d/' . $domain . '_acl' );
+		remove_proxy_file( EE_ROOT_DIR . '/services/nginx-proxy/vhost.d', $domain . '_acl' );
 	}
 
 	// Without site entries the proxy falls back to `default_acl`.
