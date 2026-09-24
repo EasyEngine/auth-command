@@ -132,12 +132,13 @@ function get_alias_auth_domains( array $aliases ): array {
 /**
  * Collects the htpasswd/ACL file names of a site: the site itself, `_wildcard.<site>` for subdomain multisites, and its alias domains.
  *
- * @param string              $site_url  URL of site.
- * @param \EE\Model\Site|null $site_data Site model.
+ * @param string              $site_url      URL of site.
+ * @param \EE\Model\Site|null $site_data     Site model.
+ * @param array               $extra_aliases Alias domains not saved on the site yet, e.g. ones about to be added.
  *
  * @return array
  */
-function get_site_auth_domains( string $site_url, $site_data ): array {
+function get_site_auth_domains( string $site_url, $site_data, array $extra_aliases = [] ): array {
 
 	$is_subdom = ! empty( $site_data->app_sub_type ) && 'subdom' === $site_data->app_sub_type;
 	$domains   = [ $site_url ];
@@ -146,9 +147,8 @@ function get_site_auth_domains( string $site_url, $site_data ): array {
 		$domains[] = '_wildcard.' . $site_url;
 	}
 
-	if ( ! empty( $site_data->alias_domains ) ) {
-		$domains = array_merge( $domains, get_alias_auth_domains( explode( ',', $site_data->alias_domains ) ) );
-	}
+	$aliases = empty( $site_data->alias_domains ) ? [] : explode( ',', $site_data->alias_domains );
+	$domains = array_merge( $domains, get_alias_auth_domains( array_merge( $aliases, $extra_aliases ) ) );
 
 	return array_values( array_unique( $domains ) );
 }
@@ -234,15 +234,16 @@ function remove_auth_files( array $domains ): bool {
 /**
  * Generates auth files for a site.
  *
- * @param string              $site_url  URL of site.
- * @param \EE\Model\Site|null $site_data Site model.
+ * @param string              $site_url      URL of site.
+ * @param \EE\Model\Site|null $site_data     Site model.
+ * @param array               $extra_aliases Alias domains not saved on the site yet, e.g. ones about to be added.
  *
  * @throws \Exception
  */
-function generate_site_auth_files( string $site_url, $site_data = null ) {
+function generate_site_auth_files( string $site_url, $site_data = null, array $extra_aliases = [] ) {
 
 	$dir        = EE_ROOT_DIR . '/services/nginx-proxy/htpasswd';
-	$domains    = get_site_auth_domains( $site_url, $site_data );
+	$domains    = get_site_auth_domains( $site_url, $site_data, $extra_aliases );
 	$site_auths = Auth::where( 'site_url', $site_url );
 
 	// Without site entries the proxy falls back to the global `default` file.
@@ -264,46 +265,43 @@ function generate_site_auth_files( string $site_url, $site_data = null ) {
 }
 
 /**
- * Writes a site's current htpasswd and ACL files for extra file names, e.g. of alias domains that are about to be served.
+ * Writes a site's htpasswd and ACL files, including for alias domains that are about to be served.
  *
- * Only writes the files the site has own entries for, so other names keep falling back to the global files.
+ * @param string              $site_url  URL of site.
+ * @param \EE\Model\Site|null $site_data Site model.
+ * @param array               $aliases   Alias domains not saved on the site yet.
+ *
+ * @throws \Exception
+ */
+function add_site_auth_files( string $site_url, $site_data, array $aliases ) {
+
+	generate_site_auth_files( $site_url, $site_data, $aliases );
+	generate_site_whitelist( $site_url, $site_data, $aliases );
+}
+
+/**
+ * Checks whether any of the given file names lacks the htpasswd or ACL file the site's own entries call for.
  *
  * @param string $site_url URL of site.
- * @param array  $names    File names as returned by get_auth_domain().
+ * @param array  $names    File names as returned by get_alias_auth_domains().
  *
- * @return bool Whether any file was written.
+ * @return bool
  */
-function add_site_auth_files( string $site_url, array $names ): bool {
+function site_auth_files_missing( string $site_url, array $names ): bool {
 
-	$names = array_diff( array_unique( $names ), array_merge( [ $site_url ], RESERVED_AUTH_FILE_NAMES ) );
+	$has_auths = ! empty( Auth::where( 'site_url', $site_url ) );
+	$has_ips   = Whitelist::has_ips( $site_url );
 
-	if ( empty( $names ) ) {
-		return false;
-	}
+	foreach ( $names as $name ) {
+		$auth_missing = $has_auths && ! is_file( EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/' . $name );
+		$acl_missing  = $has_ips && ! is_file( EE_ROOT_DIR . '/services/nginx-proxy/vhost.d/' . $name . '_acl' );
 
-	$written    = false;
-	$dir        = EE_ROOT_DIR . '/services/nginx-proxy/htpasswd';
-	$site_auths = Auth::where( 'site_url', $site_url );
-
-	if ( ! empty( $site_auths ) ) {
-		if ( is_file( $dir . '/' . $site_url ) || write_htpasswd_file( $site_url, array_merge( Auth::get_global_auths(), $site_auths ) ) ) {
-			copy_proxy_file( $dir, $site_url, $names );
-			$written = true;
+		if ( $auth_missing || $acl_missing ) {
+			return true;
 		}
 	}
 
-	$ips = get_site_whitelist_ips( $site_url );
-
-	if ( ! empty( $ips ) ) {
-		foreach ( $names as $name ) {
-			if ( is_proxy_file_name( $name ) ) {
-				put_ips_to_file( EE_ROOT_DIR . '/services/nginx-proxy/vhost.d/' . $name . '_acl', $ips );
-				$written = true;
-			}
-		}
-	}
-
-	return $written;
+	return false;
 }
 
 /**
@@ -402,15 +400,16 @@ function get_site_whitelist_ips( string $site_url ): array {
 /**
  * Generates whitelist files for a site.
  *
- * @param string              $site_url  URL of site, `default` for global.
- * @param \EE\Model\Site|null $site_data Site model.
+ * @param string              $site_url      URL of site, `default` for global.
+ * @param \EE\Model\Site|null $site_data     Site model.
+ * @param array               $extra_aliases Alias domains not saved on the site yet, e.g. ones about to be added.
  *
  * @throws \Exception
  */
-function generate_site_whitelist( string $site_url, $site_data = null ) {
+function generate_site_whitelist( string $site_url, $site_data = null, array $extra_aliases = [] ) {
 
 	$dir     = EE_ROOT_DIR . '/services/nginx-proxy/vhost.d';
-	$domains = get_site_auth_domains( $site_url, $site_data );
+	$domains = get_site_auth_domains( $site_url, $site_data, $extra_aliases );
 	$ips     = get_site_whitelist_ips( $site_url );
 
 	foreach ( $domains as $domain ) {

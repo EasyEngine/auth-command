@@ -8,11 +8,10 @@ use EE\Model\Auth;
 use EE\Model\Site;
 use EE\Model\Whitelist;
 use function EE\Auth\Utils\add_site_auth_files;
-use function EE\Auth\Utils\generate_site_auth_files;
-use function EE\Auth\Utils\generate_site_whitelist;
 use function EE\Auth\Utils\get_alias_auth_domains;
 use function EE\Auth\Utils\get_site_auth_domains;
 use function EE\Auth\Utils\remove_auth_files;
+use function EE\Auth\Utils\site_auth_files_missing;
 
 /**
  * Hook to cleanup auth entries, whitelisted ips and their files if any.
@@ -65,17 +64,10 @@ function update_auth_on_alias_domains_change( $site_url, $added_domains = [], $r
 		$reload = true;
 	}
 
-	// The added domains got their files before the update; regenerate them from the saved site to reconcile.
-	if ( ! empty( $added_domains ) ) {
-		if ( ! empty( Auth::where( 'site_url', $site_url ) ) ) {
-			generate_site_auth_files( $site_url, $site );
-			$reload = true;
-		}
-
-		if ( Whitelist::has_ips( $site_url ) ) {
-			generate_site_whitelist( $site_url, $site );
-			$reload = true;
-		}
+	// The added domains got their files before the update, so only rewrite them if some are missing, e.g. when that failed.
+	if ( site_auth_files_missing( $site_url, get_alias_auth_domains( (array) $added_domains ) ) ) {
+		add_site_auth_files( $site_url, $site, [] );
+		$reload = true;
 	}
 
 	if ( $reload ) {
@@ -91,8 +83,14 @@ function update_auth_on_alias_domains_change( $site_url, $added_domains = [], $r
  */
 function add_auth_before_alias_domains_update( $site_url, $domains_to_add = [] ) {
 
+	$site = Site::find( $site_url );
+
+	if ( ! $site || empty( $domains_to_add ) ) {
+		return;
+	}
+
 	// No reload needed: docker-gen renders the new hosts with these files once the site's containers are recreated.
-	add_site_auth_files( $site_url, get_alias_auth_domains( (array) $domains_to_add ) );
+	add_site_auth_files( $site_url, $site, (array) $domains_to_add );
 }
 
 /**
