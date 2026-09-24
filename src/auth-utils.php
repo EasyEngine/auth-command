@@ -367,8 +367,9 @@ function write_htpasswd_file( string $name, array $auths ): bool {
  */
 function htpasswd_command( string $flags, string $name, string $username, string $password ): string {
 
+	// htpasswd reports `Adding password for user <name>` on STDERR, which EE::exec() would log; failures still show in the exit code.
 	return sprintf(
-		'docker exec %s htpasswd -%s %s %s %s',
+		'docker exec %s htpasswd -%s %s %s %s 2>/dev/null',
 		EE_PROXY_TYPE,
 		$flags,
 		escapeshellarg( '/etc/nginx/htpasswd/' . $name ),
