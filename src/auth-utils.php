@@ -118,15 +118,21 @@ function generate_site_auth_files( string $site_url, $site_data = null ) {
 
 	$fs = new Filesystem();
 
-	$domains = get_site_auth_domains( $site_url, $site_data );
-	$auths   = array_merge(
-		Auth::get_global_auths(),
-		Auth::where( 'site_url', $site_url )
-	);
+	$domains    = get_site_auth_domains( $site_url, $site_data );
+	$site_auths = Auth::where( 'site_url', $site_url );
 
 	foreach ( $domains as $domain ) {
 		$fs->remove( EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/' . $domain );
+	}
 
+	// Without site entries the proxy falls back to the global `default` file.
+	if ( empty( $site_auths ) ) {
+		return;
+	}
+
+	$auths = array_merge( Auth::get_global_auths(), $site_auths );
+
+	foreach ( $domains as $domain ) {
 		foreach ( $auths as $key => $auth ) {
 			$flags = 0 === $key ? 'bc' : 'b';
 			EE::exec( sprintf( 'docker exec %s htpasswd -%s /etc/nginx/htpasswd/%s %s %s', EE_PROXY_TYPE, $flags, $domain, $auth->username, $auth->password ) );
@@ -146,20 +152,25 @@ function generate_site_whitelist( string $site_url, $site_data = null ) {
 
 	$fs = new Filesystem();
 
-	$domains    = get_site_auth_domains( $site_url, $site_data );
+	$domains  = get_site_auth_domains( $site_url, $site_data );
+	$site_ips = Whitelist::where( 'site_url', $site_url );
+
+	foreach ( $domains as $domain ) {
+		$fs->remove( EE_ROOT_DIR . '/services/nginx-proxy/vhost.d/' . $domain . '_acl' );
+	}
+
+	// Without site entries the proxy falls back to `default_acl`.
+	if ( empty( $site_ips ) ) {
+		return;
+	}
+
 	$whitelists = array_column(
-		'default' === $site_url ? Whitelist::get_global_ips() :
-			array_merge(
-				Whitelist::get_global_ips(),
-				Whitelist::where( 'site_url', $site_url )
-			),
+		'default' === $site_url ? $site_ips : array_merge( Whitelist::get_global_ips(), $site_ips ),
 		'ip'
 	);
 
 	foreach ( $domains as $domain ) {
-		$domain_whitelist_file = EE_ROOT_DIR . '/services/nginx-proxy/vhost.d/' . $domain . '_acl';
-		$fs->remove( $domain_whitelist_file );
-		put_ips_to_file( $domain_whitelist_file, $whitelists );
+		put_ips_to_file( EE_ROOT_DIR . '/services/nginx-proxy/vhost.d/' . $domain . '_acl', $whitelists );
 	}
 }
 
