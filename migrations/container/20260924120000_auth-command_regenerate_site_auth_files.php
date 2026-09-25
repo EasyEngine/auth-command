@@ -7,6 +7,8 @@ use EE\Migration\Base;
 use EE\Model\Site;
 use function EE\Auth\Utils\generate_site_auth_files;
 use function EE\Auth\Utils\generate_site_whitelist;
+use function EE\Auth\Utils\get_wildcard_staging_dir;
+use function EE\Auth\Utils\proxy_has_acl_template;
 
 class RegenerateSiteAuthFiles extends Base {
 
@@ -41,12 +43,19 @@ class RegenerateSiteAuthFiles extends Base {
 
 		$this->auth_backup = $this->backup_auth_files();
 
-		$new_template = $this->proxy_has_new_template();
+		$new_template = proxy_has_acl_template();
+		$stage        = get_wildcard_staging_dir();
+		$this->fs->remove( $stage );
+
+		// The old template applies `_wildcard.X` to every subdomain of X, even on a container event without a reload, so those files wait outside its mounts.
+		if ( ! $new_template ) {
+			$this->fs->mkdir( [ dirname( $stage ), $stage, "$stage/htpasswd", "$stage/vhost.d" ], 0700 );
+		}
 
 		foreach ( $this->sites as $site ) {
 			try {
-				generate_site_auth_files( $site->site_url, $site );
-				generate_site_whitelist( $site->site_url, $site );
+				generate_site_auth_files( $site->site_url, $site, [], $new_template ? '' : $stage );
+				generate_site_whitelist( $site->site_url, $site, [], $new_template ? '' : $stage );
 			} catch ( \Throwable $e ) {
 				EE::warning( sprintf( 'Could not regenerate the auth files of %s: %s', $site->site_url, $e->getMessage() ) );
 			}
@@ -55,17 +64,19 @@ class RegenerateSiteAuthFiles extends Base {
 		if ( $new_template ) {
 			\EE\Site\Utils\reload_global_nginx_proxy();
 		} else {
-			// The old template applies `_wildcard.X` to every subdomain of X; the image migration recreates the proxy with the new one.
-			EE::debug( 'Not reloading nginx-proxy: it runs the old template, the image migration recreates it.' );
+			// Promoted by the after_docker_image_migration hook, or on a later run, once the new proxy runs.
+			EE::debug( "Staged the wildcard auth files in $stage; nginx-proxy runs the old template." );
 		}
 	}
 
 	/**
-	 * Restores the files saved by up() exactly, including removing files it added.
+	 * Discards the staged wildcard files and restores the files saved by up() exactly, including removing files it added.
 	 *
 	 * @throws \Exception
 	 */
 	public function down() {
+
+		$this->fs->remove( get_wildcard_staging_dir() );
 
 		if ( empty( $this->auth_backup ) || ! is_dir( $this->auth_backup ) ) {
 			EE::debug( 'No site auth files backup to restore.' );
@@ -191,25 +202,5 @@ class RegenerateSiteAuthFiles extends Base {
 		$this->fs->copy( $source, $target, true );
 		$this->fs->chmod( $target, fileperms( $source ) & 0777 );
 		$this->fs->touch( $target, filemtime( $source ) );
-	}
-
-	/**
-	 * Checks whether the running nginx-proxy has the template that applies `_wildcard.X` files only to `*.X` hosts.
-	 *
-	 * @return bool False when the proxy isn't running or runs an older template.
-	 */
-	private function proxy_has_new_template() {
-
-		if ( 'running' !== \EE_DOCKER::container_status( EE_PROXY_TYPE ) ) {
-			EE::debug( 'nginx-proxy is not running: treating its template as the old one.' );
-
-			return false;
-		}
-
-		$check = EE::launch( sprintf( 'docker exec %s grep -c %s /app/nginx.tmpl', EE_PROXY_TYPE, escapeshellarg( 'define "acl"' ) ) );
-		$new   = 0 === $check->return_code && (int) trim( $check->stdout ) > 0;
-		EE::debug( 'nginx-proxy template: ' . ( $new ? 'new (has the acl block)' : 'old (no acl block)' ) );
-
-		return $new;
 	}
 }
