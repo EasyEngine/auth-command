@@ -6,6 +6,7 @@ namespace EE\Auth\Utils;
 use EE;
 use EE\Model\Auth;
 use EE\Model\Option;
+use EE\Model\Site;
 use EE\Model\Whitelist;
 use Symfony\Component\Filesystem\Filesystem;
 use function EE\Service\Utils\ensure_global_network_initialized;
@@ -158,30 +159,32 @@ function remove_proxy_file( string $dir, string $name ): bool {
 }
 
 /**
- * Copies a file inside a proxy directory to other names in the same directory.
+ * Copies a file inside a proxy directory to other names in the same directory, or in $target_dir.
  *
- * @param string $dir     Directory path.
- * @param string $source  Source file name.
- * @param array  $targets Target file names.
+ * @param string $dir        Directory path.
+ * @param string $source     Source file name.
+ * @param array  $targets    Target file names.
+ * @param string $target_dir Target directory, $dir if empty.
  */
-function copy_proxy_file( string $dir, string $source, array $targets ) {
+function copy_proxy_file( string $dir, string $source, array $targets, string $target_dir = '' ) {
 
-	$fs   = new Filesystem();
-	$mode = fileperms( $dir . '/' . $source ) & 0777;
+	$fs         = new Filesystem();
+	$mode       = fileperms( $dir . '/' . $source ) & 0777;
+	$target_dir = '' === $target_dir ? $dir : $target_dir;
 
 	foreach ( $targets as $target ) {
-		if ( ! is_proxy_file_name( $target ) || $target === $source ) {
+		if ( ! is_proxy_file_name( $target ) || ( $target === $source && $target_dir === $dir ) ) {
 			continue;
 		}
 		// Built under a name no host matches, then renamed, so the proxy never reads a partial copy.
 		$tmp = '.' . $target . '.tmp';
 		try {
-			$fs->copy( $dir . '/' . $source, $dir . '/' . $tmp, true );
+			$fs->copy( $dir . '/' . $source, $target_dir . '/' . $tmp, true );
 			// Don't depend on the umask: nginx workers read these files.
-			$fs->chmod( $dir . '/' . $tmp, $mode );
-			$fs->rename( $dir . '/' . $tmp, $dir . '/' . $target, true );
+			$fs->chmod( $target_dir . '/' . $tmp, $mode );
+			$fs->rename( $target_dir . '/' . $tmp, $target_dir . '/' . $target, true );
 		} catch ( \Exception $e ) {
-			remove_proxy_file( $dir, $tmp );
+			remove_proxy_file( $target_dir, $tmp );
 			EE::warning( sprintf( 'Could not copy %s to %s, so it was left unchanged.', $source, $target ) );
 		}
 	}
@@ -215,14 +218,21 @@ function remove_auth_files( array $domains ): bool {
  * @param string              $site_url      URL of site.
  * @param \EE\Model\Site|null $site_data     Site model.
  * @param array               $extra_aliases Alias domains not saved on the site yet, e.g. ones about to be added.
+ * @param string              $stage_dir     If set, `_wildcard.*` files are written to its `htpasswd/` instead of the proxy.
  *
  * @throws \Exception
  */
-function generate_site_auth_files( string $site_url, $site_data = null, array $extra_aliases = [] ) {
+function generate_site_auth_files( string $site_url, $site_data = null, array $extra_aliases = [], string $stage_dir = '' ) {
 
 	$dir        = EE_ROOT_DIR . '/services/nginx-proxy/htpasswd';
 	$domains    = get_site_auth_domains( $site_url, $site_data, $extra_aliases );
 	$site_auths = Auth::where( 'site_url', $site_url );
+	$staged     = '' === $stage_dir ? [] : array_filter( $domains, __NAMESPACE__ . '\is_wildcard_auth_name' );
+
+	// A staged name must not stay live either, its staged copy replaces it.
+	foreach ( $staged as $domain ) {
+		remove_proxy_file( $dir, $domain );
+	}
 
 	// Without site entries the proxy falls back to the global `default` file.
 	if ( empty( $site_auths ) ) {
@@ -237,7 +247,8 @@ function generate_site_auth_files( string $site_url, $site_data = null, array $e
 
 	// If it can't be rewritten (e.g. the proxy is stopped during an upgrade), still spread the existing file to the other domains.
 	if ( write_htpasswd_file( $source, array_merge( Auth::get_global_auths(), $site_auths ) ) || is_file( $dir . '/' . $source ) ) {
-		copy_proxy_file( $dir, $source, $domains );
+		copy_proxy_file( $dir, $source, array_diff( $domains, $staged ) );
+		copy_proxy_file( $dir, $source, $staged, $stage_dir . '/htpasswd' );
 	}
 }
 
@@ -380,21 +391,24 @@ function get_site_whitelist_ips( string $site_url ): array {
  * @param string              $site_url      URL of site, `default` for global.
  * @param \EE\Model\Site|null $site_data     Site model.
  * @param array               $extra_aliases Alias domains not saved on the site yet, e.g. ones about to be added.
+ * @param string              $stage_dir     If set, `_wildcard.*` files are written to its `vhost.d/` instead of the proxy.
  *
  * @throws \Exception
  */
-function generate_site_whitelist( string $site_url, $site_data = null, array $extra_aliases = [] ) {
+function generate_site_whitelist( string $site_url, $site_data = null, array $extra_aliases = [], string $stage_dir = '' ) {
 
 	$dir     = EE_ROOT_DIR . '/services/nginx-proxy/vhost.d';
 	$domains = get_site_auth_domains( $site_url, $site_data, $extra_aliases );
 	$ips     = get_site_whitelist_ips( $site_url );
 
 	foreach ( $domains as $domain ) {
+		$staged = '' !== $stage_dir && is_wildcard_auth_name( $domain );
 		// Without site entries the proxy falls back to `default_acl`.
-		if ( empty( $ips ) ) {
+		if ( empty( $ips ) || $staged ) {
 			remove_proxy_file( $dir, $domain . '_acl' );
-		} else {
-			put_ips_to_file( $dir . '/' . $domain . '_acl', $ips );
+		}
+		if ( ! empty( $ips ) ) {
+			put_ips_to_file( ( $staged ? $stage_dir . '/vhost.d' : $dir ) . '/' . $domain . '_acl', $ips );
 		}
 	}
 }
@@ -417,4 +431,117 @@ function put_ips_to_file( string $file, array $ips ) {
 	}
 	$file_content .= 'deny all;';
 	( new Filesystem() )->dumpFile( $file, $file_content );
+}
+
+/**
+ * Checks whether a htpasswd/ACL file name is a `*.X` one.
+ *
+ * @param string $name File name as returned by get_site_auth_domains().
+ *
+ * @return bool
+ */
+function is_wildcard_auth_name( string $name ): bool {
+
+	return 0 === strpos( $name, '_wildcard.' );
+}
+
+/**
+ * Directory, outside the proxy's mounts, where the auth migration stages `_wildcard.*` files while the old nginx-proxy template runs.
+ *
+ * @return string
+ */
+function get_wildcard_staging_dir(): string {
+
+	// Site names always contain a dot, so no per-site `.backup/<site>/` dir can clash with it.
+	return EE_BACKUP_DIR . '/auth-wildcard-staging';
+}
+
+/**
+ * Checks whether the running nginx-proxy has the template that applies `_wildcard.X` files only to `*.X` hosts.
+ *
+ * @return bool False when the proxy isn't running or runs an older template.
+ */
+function proxy_has_acl_template(): bool {
+
+	if ( 'running' !== \EE_DOCKER::container_status( EE_PROXY_TYPE ) ) {
+		EE::debug( 'nginx-proxy is not running: treating its template as the old one.' );
+
+		return false;
+	}
+
+	$check = EE::launch( sprintf( 'docker exec %s grep -c %s /app/nginx.tmpl', EE_PROXY_TYPE, escapeshellarg( 'define "acl"' ) ) );
+	$new   = 0 === $check->return_code && (int) trim( $check->stdout ) > 0;
+	EE::debug( 'nginx-proxy template: ' . ( $new ? 'new (has the acl block)' : 'old (no acl block)' ) );
+
+	return $new;
+}
+
+/**
+ * Checks whether a staged file matches the site's own live file: both absent, or both with the same content.
+ *
+ * @param string $live   Live file path.
+ * @param string $staged Staged file path.
+ *
+ * @return bool
+ */
+function staged_file_is_current( string $live, string $staged ): bool {
+
+	if ( ! is_file( $live ) || ! is_file( $staged ) ) {
+		return is_file( $live ) === is_file( $staged );
+	}
+
+	return file_get_contents( $live ) === file_get_contents( $staged );
+}
+
+/**
+ * Moves the `_wildcard.*` files staged by the auth migration into the proxy once it runs the new template, then reloads it.
+ *
+ * @return bool Whether the staged files were promoted.
+ * @throws \Exception
+ */
+function promote_staged_wildcard_files(): bool {
+
+	$stage = get_wildcard_staging_dir();
+	if ( ! is_dir( $stage ) || ! proxy_has_acl_template() ) {
+		return false;
+	}
+
+	$ht = EE_ROOT_DIR . '/services/nginx-proxy/htpasswd';
+	$vd = EE_ROOT_DIR . '/services/nginx-proxy/vhost.d';
+
+	foreach ( Site::all() as $site ) {
+		$url   = $site->site_url;
+		$names = array_filter( get_site_auth_domains( $url, $site ), __NAMESPACE__ . '\is_wildcard_auth_name' );
+		if ( empty( $names ) ) {
+			continue;
+		}
+
+		$current = true;
+		foreach ( $names as $name ) {
+			$current = $current && staged_file_is_current( "$ht/$url", "$stage/htpasswd/$name" ) && staged_file_is_current( "{$vd}/{$url}_acl", "$stage/vhost.d/{$name}_acl" );
+		}
+
+		if ( ! $current ) {
+			// Auth changed since staging, e.g. by the older ee after an interrupted upgrade.
+			EE::debug( "Staged wildcard auth files of $url are outdated, regenerating them." );
+			add_site_auth_files( $url, $site, [] );
+			continue;
+		}
+
+		foreach ( $names as $name ) {
+			if ( is_file( "$stage/htpasswd/$name" ) ) {
+				copy_proxy_file( "$stage/htpasswd", $name, [ $name ], $ht );
+			}
+			if ( is_file( "$stage/vhost.d/{$name}_acl" ) ) {
+				copy_proxy_file( "$stage/vhost.d", $name . '_acl', [ $name . '_acl' ], $vd );
+			}
+		}
+	}
+
+	// Files of sites deleted since staging are dropped with it.
+	( new Filesystem() )->remove( $stage );
+	\EE\Site\Utils\reload_global_nginx_proxy();
+	EE::debug( 'Promoted the staged wildcard auth files.' );
+
+	return true;
 }

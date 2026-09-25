@@ -10,6 +10,8 @@ use EE\Model\Whitelist;
 use function EE\Auth\Utils\add_site_auth_files;
 use function EE\Auth\Utils\get_alias_auth_domains;
 use function EE\Auth\Utils\get_site_auth_domains;
+use function EE\Auth\Utils\get_wildcard_staging_dir;
+use function EE\Auth\Utils\promote_staged_wildcard_files;
 use function EE\Auth\Utils\remove_auth_files;
 use function EE\Auth\Utils\site_auth_files_missing;
 
@@ -115,7 +117,46 @@ function remove_auth_on_alias_domains_update_failure( $site_url, $domains_to_add
 	}
 }
 
+/**
+ * Hook to apply the wildcard auth files staged by the auth migration once the new nginx-proxy runs.
+ */
+function promote_staged_wildcard_auth() {
+
+	if ( ! is_dir( get_wildcard_staging_dir() ) ) {
+		return;
+	}
+
+	try {
+		promote_staged_wildcard_files();
+	} catch ( \Throwable $e ) {
+		// Until promoted, subsites stay unprotected as before the upgrade; retried on the next run.
+		EE::warning( 'Could not apply the staged wildcard auth files: ' . $e->getMessage() );
+	}
+}
+
+/**
+ * Hook to promote staged wildcard auth files left by an interrupted or failed upgrade, once per run.
+ */
+function maybe_promote_staged_wildcard_auth() {
+
+	static $checked = false;
+
+	if ( $checked || ! defined( 'EE_PROXY_TYPE' ) || ! is_dir( get_wildcard_staging_dir() ) ) {
+		return;
+	}
+	$checked = true;
+
+	// Not while a migration is pending: its image migration may still bring back the old proxy.
+	if ( EE_VERSION !== \EE\Model\Option::get( 'version' ) ) {
+		return;
+	}
+
+	promote_staged_wildcard_auth();
+}
+
 EE::add_hook( 'site_cleanup', 'cleanup_auth_and_whitelist' );
+EE::add_hook( 'after_docker_image_migration', 'promote_staged_wildcard_auth' );
+EE::add_hook( 'find_command_to_run_pre', 'maybe_promote_staged_wildcard_auth' );
 EE::add_hook( 'site_alias_domains_before_update', 'add_auth_before_alias_domains_update' );
 EE::add_hook( 'site_alias_domains_updated', 'update_auth_on_alias_domains_change' );
 EE::add_hook( 'site_alias_domains_update_failed', 'remove_auth_on_alias_domains_update_failure' );
