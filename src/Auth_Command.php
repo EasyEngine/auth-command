@@ -17,9 +17,13 @@
 use EE\Model\Auth;
 use EE\Model\Whitelist;
 use Symfony\Component\Filesystem\Filesystem;
+use function EE\Auth\Utils\generate_site_auth_files;
+use function EE\Auth\Utils\generate_site_whitelist;
 use function EE\Auth\Utils\verify_htpasswd_is_present;
+use function EE\Auth\Utils\write_htpasswd_file;
 use function EE\Site\Utils\auto_site_name;
 use function EE\Site\Utils\get_site_info;
+use function EE\Site\Utils\is_reserved_proxy_file_name;
 use function EE\Site\Utils\reload_global_nginx_proxy;
 
 class Auth_Command extends EE_Command {
@@ -161,7 +165,7 @@ class Auth_Command extends EE_Command {
 		if ( 'default' === $site_url ) {
 			$this->generate_global_auth_files();
 		} else {
-			$this->generate_site_auth_files( $site_url );
+			generate_site_auth_files( $site_url, $this->site_data );
 		}
 
 		EE::log( 'Reloading global reverse proxy.' );
@@ -200,7 +204,7 @@ class Auth_Command extends EE_Command {
 		if ( 'default' === $site_url ) {
 			$this->generate_global_whitelist();
 		} else {
-			$this->generate_site_whitelist( $site_url );
+			generate_site_whitelist( $site_url, $this->site_data );
 		}
 
 		reload_global_nginx_proxy();
@@ -255,24 +259,17 @@ class Auth_Command extends EE_Command {
 		$global_admin_tools_auth = Auth::get_global_admin_tools_auth();
 
 		if ( ! empty( $global_admin_tools_auth ) ) {
-			EE::exec( sprintf( 'docker exec %s htpasswd -bc /etc/nginx/htpasswd/default_admin_tools %s %s', EE_PROXY_TYPE, $global_admin_tools_auth->username, $global_admin_tools_auth->password ) );
+			write_htpasswd_file( 'default_admin_tools', $global_admin_tools_auth );
 		} else {
-			$this->fs->remove( EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/default_admin_tools' );
-			$this->fs->remove( EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/default' );
 			$auths = Auth::get_global_auths();
 
 			if ( empty( $auths ) ) {
+				$this->fs->remove( EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/default_admin_tools' );
+				$this->fs->remove( EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/default' );
 				$this->regen_admin_tools_auth();
-			} else {
-				foreach ( $auths as $key => $auth ) {
-					$flags = 'b';
-
-					if ( 0 === $key ) {
-						$flags = 'bc';
-					}
-
-					EE::exec( sprintf( 'docker exec %s htpasswd -%s /etc/nginx/htpasswd/default %s %s', EE_PROXY_TYPE, $flags, $auth->username, $auth->password ) );
-				}
+			} elseif ( write_htpasswd_file( 'default', $auths ) ) {
+				// Admin tools prefer default_admin_tools, so drop it only once `default` is written; on failure both files keep protecting.
+				$this->fs->remove( EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/default_admin_tools' );
 			}
 
 			$sites = array_unique(
@@ -283,34 +280,11 @@ class Auth_Command extends EE_Command {
 			);
 
 			foreach ( $sites as $site ) {
-				$this->generate_site_auth_files( $site );
+				// The global files were handled above.
+				if ( ! is_reserved_proxy_file_name( $site ) ) {
+					generate_site_auth_files( $site, \EE\Model\Site::find( $site ) ?: null );
+				}
 			}
-		}
-	}
-
-	/**
-	 * Generates auth files for a site
-	 *
-	 * @param string $site_url URL of site
-	 *
-	 * @throws Exception
-	 */
-	private function generate_site_auth_files( string $site_url ) {
-		$site_auth_file = EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/' . $site_url;
-		$this->fs->remove( $site_auth_file );
-
-		$auths = array_merge(
-			Auth::get_global_auths(),
-			Auth::where( 'site_url', $site_url )
-		);
-
-		foreach ( $auths as $key => $auth ) {
-			$flags = 'b';
-
-			if ( $key === 0 ) {
-				$flags = 'bc';
-			}
-			EE::exec( sprintf( 'docker exec %s htpasswd -%s /etc/nginx/htpasswd/%s %s %s', EE_PROXY_TYPE, $flags, $site_url, $auth->username, $auth->password ) );
 		}
 	}
 
@@ -320,7 +294,7 @@ class Auth_Command extends EE_Command {
 	 * @throws Exception
 	 */
 	private function generate_global_whitelist() {
-		$this->generate_site_whitelist( 'default' );
+		generate_site_whitelist( 'default' );
 
 		$sites = array_unique(
 			array_column(
@@ -333,52 +307,9 @@ class Auth_Command extends EE_Command {
 		}
 
 		foreach ( $sites as $site ) {
-			$this->generate_site_whitelist( $site );
+			generate_site_whitelist( $site, \EE\Model\Site::find( $site ) ?: null );
 		}
 
-	}
-
-	/**
-	 * Generates site whitelist files
-	 *
-	 * @param string $site_url
-	 *
-	 * @throws Exception
-	 */
-	private function generate_site_whitelist( string $site_url ) {
-		$site_whitelist_file = EE_ROOT_DIR . '/services/nginx-proxy/vhost.d/' . $site_url . '_acl';
-		$this->fs->remove( $site_whitelist_file );
-
-		$whitelists = array_column(
-			'default' === $site_url ? Whitelist::get_global_ips() :
-				array_merge(
-					Whitelist::get_global_ips(),
-					Whitelist::where( 'site_url', $site_url )
-				),
-			'ip'
-		);
-
-		$this->put_ips_to_file( $site_whitelist_file, $whitelists );
-	}
-
-	/**
-	 * Function to put list of ip's into a file.
-	 *
-	 * @param string $file Path of file to write ip's in.
-	 * @param array  $ips  List of ip's.
-	 */
-	private function put_ips_to_file( string $file, array $ips ) {
-
-		if ( empty( $ips ) ) {
-			return;
-		}
-
-		$file_content = 'satisfy any;' . PHP_EOL;
-		foreach ( $ips as $ip ) {
-			$file_content .= "allow $ip;" . PHP_EOL;
-		}
-		$file_content .= 'deny all;';
-		$this->fs->dumpFile( $file, $file_content );
 	}
 
 	/**
@@ -453,7 +384,7 @@ class Auth_Command extends EE_Command {
 		if ( 'default' === $site_url ) {
 			$this->generate_global_auth_files();
 		} else {
-			$this->generate_site_auth_files( $site_url );
+			generate_site_auth_files( $site_url, $this->site_data );
 		}
 
 		EE::log( 'Reloading global reverse proxy.' );
@@ -499,7 +430,7 @@ class Auth_Command extends EE_Command {
 		if ( 'default' === $site_url ) {
 			$this->generate_global_whitelist();
 		} else {
-			$this->generate_site_whitelist( $site_url );
+			generate_site_whitelist( $site_url, $this->site_data );
 		}
 
 		reload_global_nginx_proxy();
@@ -594,7 +525,7 @@ class Auth_Command extends EE_Command {
 			if ( 'default' === $site_url ) {
 				$this->generate_global_auth_files();
 			} else {
-				$this->generate_site_auth_files( $site_url );
+				generate_site_auth_files( $site_url, $this->site_data );
 			}
 
 			if ( $user ) {
@@ -646,7 +577,7 @@ class Auth_Command extends EE_Command {
 			if ( 'default' === $site_url ) {
 				$this->generate_global_whitelist();
 			} else {
-				$this->generate_site_whitelist( $site_url );
+				generate_site_whitelist( $site_url, $this->site_data );
 			}
 
 			reload_global_nginx_proxy();

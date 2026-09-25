@@ -7,44 +7,115 @@ if ( ! class_exists( 'EE' ) ) {
 use EE\Model\Auth;
 use EE\Model\Site;
 use EE\Model\Whitelist;
-use Symfony\Component\Filesystem\Filesystem;
+use function EE\Auth\Utils\add_site_auth_files;
+use function EE\Auth\Utils\get_alias_auth_domains;
+use function EE\Auth\Utils\get_site_auth_domains;
+use function EE\Auth\Utils\remove_auth_files;
+use function EE\Auth\Utils\site_auth_files_missing;
 
 /**
- * Hook to cleanup auth entries and whitelisted ips if any.
+ * Hook to cleanup auth entries, whitelisted ips and their files if any.
  *
  * @param string $site_url The site to be cleaned up.
  */
 function cleanup_auth_and_whitelist( $site_url ) {
 
-	if ( ! Site::find( $site_url ) ) {
+	$site = Site::find( $site_url );
+
+	if ( ! $site ) {
 		return;
 	}
 
-	$fs = new Filesystem();
+	$rows = array_merge( Auth::where( [ 'site_url' => $site_url ] ), Whitelist::where( [ 'site_url' => $site_url ] ) );
 
-	$auths = Auth::where( [ 'site_url' => $site_url ] );
-
-	if ( ! empty( $auths ) ) {
-		foreach ( $auths as $auth ) {
-			$auth->delete();
-		}
-
-		$site_auth_file = EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/' . $site_url;
-		$fs->remove( $site_auth_file );
+	foreach ( $rows as $row ) {
+		$row->delete();
 	}
 
-	$whitelists = Whitelist::where( [ 'site_url' => $site_url ] );
+	// Files may exist without site entries (e.g. left by older versions), so always remove them.
+	$removed = remove_auth_files( get_site_auth_domains( $site_url, $site ) );
 
-	if ( ! empty( $whitelists ) ) {
-		foreach ( $whitelists as $whitelist ) {
-			$whitelist->delete();
-		}
+	if ( $removed || ! empty( $rows ) ) {
+		\EE\Site\Utils\reload_global_nginx_proxy();
+	}
+}
 
-		$site_whitelist_file = EE_ROOT_DIR . '/services/nginx-proxy/vhost.d/' . $site_url . '_acl';
-		$fs->remove( $site_whitelist_file );
+/**
+ * Hook to sync auth and whitelist files with the alias domains of a site after they change.
+ *
+ * @param string $site_url        The site whose alias domains changed.
+ * @param array  $added_domains   Alias domains that were added.
+ * @param array  $removed_domains Alias domains that were removed.
+ */
+function update_auth_on_alias_domains_change( $site_url, $added_domains = [], $removed_domains = [] ) {
+
+	$site = Site::find( $site_url );
+
+	if ( ! $site ) {
+		return;
 	}
 
-	\EE\Site\Utils\reload_global_nginx_proxy();
+	$reload = false;
+
+	// Keep files the site still uses, e.g. _wildcard.<site> of a subdomain multisite.
+	$removed = array_diff( get_alias_auth_domains( (array) $removed_domains ), get_site_auth_domains( $site_url, $site ) );
+
+	if ( remove_auth_files( $removed ) ) {
+		$reload = true;
+	}
+
+	// The added domains got their files before the update, so only rewrite them if some are missing, e.g. when that failed.
+	if ( site_auth_files_missing( $site_url, get_alias_auth_domains( (array) $added_domains ) ) ) {
+		add_site_auth_files( $site_url, $site, [] );
+		$reload = true;
+	}
+
+	if ( $reload ) {
+		\EE\Site\Utils\reload_global_nginx_proxy();
+	}
+}
+
+/**
+ * Hook to write auth and whitelist files for alias domains before the proxy serves them, so they are never reachable unprotected.
+ *
+ * @param string $site_url       The site whose alias domains change.
+ * @param array  $domains_to_add Alias domains that are being added.
+ */
+function add_auth_before_alias_domains_update( $site_url, $domains_to_add = [] ) {
+
+	$site = Site::find( $site_url );
+
+	if ( ! $site || empty( $domains_to_add ) ) {
+		return;
+	}
+
+	// No reload needed: docker-gen renders the new hosts with these files once the site's containers are recreated.
+	add_site_auth_files( $site_url, $site, (array) $domains_to_add );
+}
+
+/**
+ * Hook to remove the files written for alias domains whose update failed.
+ *
+ * @param string $site_url       The site whose alias domains update failed.
+ * @param array  $domains_to_add Alias domains that were not added after all.
+ */
+function remove_auth_on_alias_domains_update_failure( $site_url, $domains_to_add = [] ) {
+
+	$site = Site::find( $site_url );
+
+	if ( ! $site ) {
+		return;
+	}
+
+	// The site still has its old alias domains, so this keeps every file it uses.
+	$names = array_diff( get_alias_auth_domains( (array) $domains_to_add ), get_site_auth_domains( $site_url, $site ) );
+
+	if ( remove_auth_files( $names ) ) {
+		\EE\Site\Utils\reload_global_nginx_proxy();
+	}
 }
 
 EE::add_hook( 'site_cleanup', 'cleanup_auth_and_whitelist' );
+EE::add_hook( 'site_alias_domains_before_update', 'add_auth_before_alias_domains_update' );
+EE::add_hook( 'site_alias_domains_updated', 'update_auth_on_alias_domains_change' );
+EE::add_hook( 'site_alias_domains_update_failed', 'remove_auth_on_alias_domains_update_failure' );
