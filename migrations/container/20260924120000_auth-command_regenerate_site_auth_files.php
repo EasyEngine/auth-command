@@ -49,7 +49,7 @@ class RegenerateSiteAuthFiles extends Base {
 
 		// The old template applies `_wildcard.X` to every subdomain of X, even on a container event without a reload, so those files wait outside its mounts.
 		if ( ! $new_template ) {
-			$this->fs->mkdir( [ dirname( $stage ), $stage, "$stage/htpasswd", "$stage/vhost.d" ], 0700 );
+			$this->fs->mkdir( [ $stage, "$stage/htpasswd", "$stage/vhost.d" ], 0700 );
 		}
 
 		foreach ( $this->sites as $site ) {

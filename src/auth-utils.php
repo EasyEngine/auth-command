@@ -452,7 +452,8 @@ function is_wildcard_auth_name( string $name ): bool {
  */
 function get_wildcard_staging_dir(): string {
 
-	return EE_ROOT_DIR . '/.staging/auth-wildcard';
+	// Site names always contain a dot, so no per-site `.backup/<site>/` dir can clash with it.
+	return EE_BACKUP_DIR . '/auth-wildcard-staging';
 }
 
 /**
