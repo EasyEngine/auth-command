@@ -19,6 +19,7 @@ use EE\Model\Whitelist;
 use Symfony\Component\Filesystem\Filesystem;
 use function EE\Auth\Utils\generate_site_auth_files;
 use function EE\Auth\Utils\generate_site_whitelist;
+use function EE\Auth\Utils\is_valid_whitelist_ip;
 use function EE\Auth\Utils\verify_htpasswd_is_present;
 use function EE\Auth\Utils\write_htpasswd_file;
 use function EE\Site\Utils\auto_site_name;
@@ -97,26 +98,41 @@ class Auth_Command extends EE_Command {
 
 	/**
 	 * Cleans and Validate IP addresses
-	 * Converts input separated by comma, spaces and new-lines in array
+	 * Converts input separated by comma, whitespace and new-lines in an array of unique entries
 	 *
-	 * @param string $ips IPs to clean and validate
+	 * @param string $ips      IPs to clean and validate
+	 * @param string $site_url If set, entries already stored for it are accepted, so ones saved by older versions can be deleted.
 	 *
 	 * @return array $user_ips Cleaned IP addresses.
 	 */
-	private function clean_and_validate_ips( string $ips ) {
+	private function clean_and_validate_ips( string $ips, string $site_url = '' ) {
 
-		$user_ips = preg_split( '/[\ \n\,]+/', $ips );
+		// Unique, as a repeated entry would hit the UNIQUE(site_url, ip) constraint.
+		$user_ips = array_values( array_unique( preg_split( '/[\s,]+/', trim( $ips ) ) ) );
 
 		foreach ( $user_ips as $ip ) {
 
-			// Remove subnet from ip if present.
-			if ( preg_match( '~^(.+?)/([^/]+)$~', $ip, $m ) ) {
-				$ip = $m[1];
+			if ( is_valid_whitelist_ip( $ip ) ) {
+				continue;
 			}
 
-			if ( ! filter_var( $ip, FILTER_VALIDATE_IP ) ) {
-				EE::error( 'Please check your list do not have any empty or wrong IP addresses.' );
+			$stored = '' !== $site_url && '' !== $ip && Whitelist::where(
+				[
+					'site_url' => $site_url,
+					'ip'       => $ip,
+				]
+			);
+
+			if ( $stored ) {
+				continue;
 			}
+
+			EE::error(
+				sprintf(
+					'Please check your list do not have any empty or wrong IP addresses. Invalid entry: %s. Use an IPv4 or IPv6 address, optionally with a CIDR prefix of 0-32 (IPv4) or 0-128 (IPv6), e.g. 192.0.2.0/24 or 2001:db8::/32.',
+					'' === $ip ? 'an empty one' : "'$ip'"
+				)
+			);
 		}
 
 		return $user_ips;
@@ -548,7 +564,7 @@ class Auth_Command extends EE_Command {
 					$whitelist->delete();
 				}
 			} else {
-				$user_ips = $this->clean_and_validate_ips( $ip );
+				$user_ips = $this->clean_and_validate_ips( $ip, $site_url );
 
 				foreach ( $user_ips as $ip ) {
 					$existing_ips = Whitelist::where(

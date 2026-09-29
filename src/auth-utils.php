@@ -365,7 +365,84 @@ function htpasswd_command( string $flags, string $name, string $username, string
 }
 
 /**
+ * Checks that a whitelist entry is an IPv4 or IPv6 address, optionally with a CIDR prefix, that nginx's `allow` accepts.
+ *
+ * @param string $entry Whitelist entry.
+ *
+ * @return bool
+ */
+function is_valid_whitelist_ip( string $entry ): bool {
+
+	$parts = explode( '/', $entry );
+
+	if ( count( $parts ) > 2 ) {
+		return false;
+	}
+
+	$is_ipv4 = false !== filter_var( $parts[0], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4 );
+
+	if ( ! $is_ipv4 && false === filter_var( $parts[0], FILTER_VALIDATE_IP, FILTER_FLAG_IPV6 ) ) {
+		return false;
+	}
+
+	// nginx reads 255.255.255.255 as its INADDR_NONE error value, also when embedded in an IPv6 address.
+	if ( preg_match( '/(^|:)255\.255\.255\.255\z/', $parts[0] ) ) {
+		return false;
+	}
+
+	// nginx rejects a `::` that stands for no group, e.g. `1:2:3:4:5:6:7::`.
+	if ( preg_match( '/^(?:[0-9a-f]{1,4}:){7}:\z/i', $parts[0] ) ) {
+		return false;
+	}
+
+	if ( ! isset( $parts[1] ) ) {
+		return true;
+	}
+
+	// Digits only, so no sign, space or `;` reaches the nginx config; leading zeros are refused as ambiguous.
+	return 1 === preg_match( '/^(0|[1-9][0-9]{0,2})\z/', $parts[1] ) && (int) $parts[1] <= ( $is_ipv4 ? 32 : 128 );
+}
+
+/**
+ * Normalizes a whitelist entry stored by an older version that nginx accepts as is, e.g. `10.0.0.0/08` or a trailing CR.
+ *
+ * @param string $entry Stored whitelist entry.
+ *
+ * @return string The entry without surrounding whitespace and prefix leading zeros, or unchanged when it's still invalid.
+ */
+function normalize_stored_whitelist_ip( string $entry ): string {
+
+	// Only the whitespace nginx itself separates on.
+	$normalized = preg_replace( '~/0+(?=[0-9])~', '/', trim( $entry, " \t\r\n" ) );
+
+	return is_valid_whitelist_ip( $normalized ) ? $normalized : $entry;
+}
+
+/**
+ * Warns once per scope and entry about an invalid stored whitelist entry, with the command that removes it.
+ *
+ * @param string $site_url Site URL of the entry, `default` for global.
+ * @param string $ip       Whitelist entry.
+ */
+function warn_invalid_stored_whitelist_ip( string $site_url, string $ip ) {
+
+	static $warned = [];
+
+	$scope = 'default' === $site_url ? 'global' : $site_url;
+	if ( ! empty( $warned[ $scope ][ $ip ] ) ) {
+		return;
+	}
+	$warned[ $scope ][ $ip ] = true;
+
+	// `--ip` splits on whitespace and commas, so such an entry can only go with the whole list.
+	$hint = preg_match( '/[\s,]/', $ip ) ? "`ee auth delete $scope --ip` and add the valid ones again" : sprintf( '`ee auth delete %s --ip=%s`', $scope, escapeshellarg( $ip ) );
+	EE::warning( sprintf( "Skipping the invalid whitelist entry '%s' of %s: nginx would reject it. Remove it with %s.", $ip, $scope, $hint ) );
+}
+
+/**
  * Gets the IPs to whitelist on a site: global and site entries, or none when the site has no own entries.
+ *
+ * Invalid entries stored by older versions are skipped with a warning, as nginx would reject the whole file.
  *
  * @param string $site_url URL of site, `default` for global.
  *
@@ -379,10 +456,18 @@ function get_site_whitelist_ips( string $site_url ): array {
 		return [];
 	}
 
-	return array_column(
-		'default' === $site_url ? $site_ips : array_merge( Whitelist::get_global_ips(), $site_ips ),
-		'ip'
-	);
+	$ips = [];
+	foreach ( 'default' === $site_url ? $site_ips : array_merge( Whitelist::get_global_ips(), $site_ips ) as $row ) {
+		$ip = normalize_stored_whitelist_ip( (string) $row->ip );
+		if ( is_valid_whitelist_ip( $ip ) ) {
+			$ips[] = $ip;
+		} else {
+			// Global entries are merged into every site's file, so this warns once.
+			warn_invalid_stored_whitelist_ip( $row->site_url, $row->ip );
+		}
+	}
+
+	return $ips;
 }
 
 /**
