@@ -71,17 +71,20 @@ class DropInvalidWhitelistEntriesFromAclFiles extends Base {
 		}
 
 		$removed = [];
-		foreach ( $this->files as $file => list( $content, $entries ) ) {
-			$this->fs->dumpFile( $file, $content );
-			if ( $entries ) {
-				$removed[ implode( "', '", $entries ) ][] = basename( $file );
-			} else {
-				EE::debug( "Normalized the whitelist entries of $file" );
+		try {
+			foreach ( $this->files as $file => list( $content, $entries ) ) {
+				$this->fs->dumpFile( $file, $content );
+				if ( $entries ) {
+					$removed[ implode( "', '", $entries ) ][] = basename( $file );
+				} else {
+					EE::debug( "Normalized the whitelist entries of $file" );
+				}
 			}
-		}
-
-		foreach ( $removed as $entries => $files ) {
-			EE::warning( sprintf( "Removed the invalid whitelist entries '%s' from %s in %s.", $entries, implode( ', ', $files ), EE_ROOT_DIR . '/services/nginx-proxy/vhost.d' ) );
+		} finally {
+			// Also after a failed write: a retry no longer sees the files already fixed.
+			foreach ( $removed as $entries => $files ) {
+				EE::warning( sprintf( "Removed the invalid whitelist entries '%s' from %s in %s.", $entries, implode( ', ', $files ), EE_ROOT_DIR . '/services/nginx-proxy/vhost.d' ) );
+			}
 		}
 
 		// The rows stay stored; name the command that removes each one.

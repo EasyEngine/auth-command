@@ -412,7 +412,8 @@ function is_valid_whitelist_ip( string $entry ): bool {
  */
 function normalize_stored_whitelist_ip( string $entry ): string {
 
-	$normalized = preg_replace( '~/0+(?=[0-9])~', '/', trim( $entry ) );
+	// Only the whitespace nginx itself separates on.
+	$normalized = preg_replace( '~/0+(?=[0-9])~', '/', trim( $entry, " \t\r\n" ) );
 
 	return is_valid_whitelist_ip( $normalized ) ? $normalized : $entry;
 }
