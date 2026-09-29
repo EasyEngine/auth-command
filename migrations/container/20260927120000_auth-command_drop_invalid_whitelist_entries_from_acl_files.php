@@ -16,6 +16,11 @@ class DropInvalidWhitelistEntriesFromAclFiles extends Base {
 	 */
 	private $files = [];
 
+	/**
+	 * @var array ACL files that couldn't be read.
+	 */
+	private $unreadable = [];
+
 	public function __construct() {
 
 		parent::__construct();
@@ -29,12 +34,15 @@ class DropInvalidWhitelistEntriesFromAclFiles extends Base {
 		foreach ( glob( EE_ROOT_DIR . '/services/nginx-proxy/vhost.d/*_acl' ) ?: [] as $file ) {
 			$content = file_get_contents( $file );
 			if ( false === $content ) {
+				// It may hold an invalid entry, so up() fails and the migration stays pending.
+				$this->unreadable[] = $file;
 				continue;
 			}
 			$removed = [];
 			$lines   = [];
 			foreach ( explode( "\n", $content ) as $line ) {
-				if ( ! preg_match( '/^allow (.*);(\r?)$/', $line, $m ) || is_valid_whitelist_ip( $m[1] ) ) {
+				// nginx also accepts `all` and `unix:`, which EE doesn't write but a hand edit may add.
+				if ( ! preg_match( '/^allow (.*);(\r?)$/', $line, $m ) || is_valid_whitelist_ip( $m[1] ) || in_array( $m[1], [ 'all', 'unix:' ], true ) ) {
 					$lines[] = $line;
 					continue;
 				}
@@ -52,7 +60,7 @@ class DropInvalidWhitelistEntriesFromAclFiles extends Base {
 			}
 		}
 
-		$this->skip_this_migration = empty( $this->files );
+		$this->skip_this_migration = empty( $this->files ) && empty( $this->unreadable );
 	}
 
 	/**
@@ -60,7 +68,7 @@ class DropInvalidWhitelistEntriesFromAclFiles extends Base {
 	 *
 	 * The files are edited in place instead of regenerated, so no new file is written while an older nginx-proxy runs.
 	 *
-	 * @throws \Exception When a file can't be rewritten, so the upgrade stops before the image migration recreates the proxy on it.
+	 * @throws \Exception When a file can't be read or rewritten, so the upgrade stops before the image migration recreates the proxy on it.
 	 */
 	public function up() {
 
@@ -79,6 +87,9 @@ class DropInvalidWhitelistEntriesFromAclFiles extends Base {
 				} else {
 					EE::debug( "Normalized the whitelist entries of $file" );
 				}
+			}
+			if ( $this->unreadable ) {
+				throw new \Exception( 'Could not read ' . implode( ', ', $this->unreadable ) );
 			}
 		} finally {
 			// Also after a failed write: a retry no longer sees the files already fixed.
