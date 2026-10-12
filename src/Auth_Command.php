@@ -382,7 +382,7 @@ class Auth_Command extends EE_Command {
 	 *
 	 * ## EXAMPLES
 	 *
-	 *     # Set a new random password for the admin-tools user
+	 *     # Set a new random password for the admin-tools user (a global user named easyengine is updated instead, if there is one)
 	 *     $ ee auth update global --user=easyengine
 	 *
 	 *     # Update auth password on site with predefined username and password
