@@ -170,12 +170,6 @@ class Auth_Command extends EE_Command {
 			EE::error( $error_message );
 		}
 
-		$admin_tools_auth = Auth::get_global_admin_tools_auth();
-		if ( 'default' === $site_url && ! empty( $admin_tools_auth ) ) {
-			$admin_tools_auth[0]->site_url = 'default';
-			$admin_tools_auth[0]->save();
-		}
-
 		Auth::create( $auth_data );
 
 		if ( 'default' === $site_url ) {
@@ -256,13 +250,49 @@ class Auth_Command extends EE_Command {
 	 * @throws \EE\ExitException
 	 */
 	private function regen_admin_tools_auth() {
-		$admin_tools = \EE\Model\Site::where( 'admin_tools', '1' );
-		$mailhog     = \EE\Model\Site::where( 'mailhog_enabled', '1' );
-		if ( empty( $admin_tools ) && empty( $mailhog ) ) {
+		if ( ! $this->admin_tools_in_use() ) {
 			return;
 		}
 		EE::log( 'Creating new auth for admin-tools only.' );
 		\EE\Auth\Utils\init_global_admin_tools_auth();
+	}
+
+	/**
+	 * Whether any site has admin-tools or mailhog enabled, which are served behind the admin-tools auth.
+	 *
+	 * @return bool
+	 */
+	private function admin_tools_in_use() {
+		return ! empty( \EE\Model\Site::where( 'admin_tools', '1' ) ) || ! empty( \EE\Model\Site::where( 'mailhog_enabled', '1' ) );
+	}
+
+	/**
+	 * Keeps the admin-tools login when the last global auth user goes and admin-tools have no auth of their own.
+	 *
+	 * Admin tools then fall back to the global auth. Its `easyengine` user (older versions moved the admin-tools user there)
+	 * becomes the admin-tools auth instead of being deleted, so saved admin-tools credentials keep working.
+	 *
+	 * @param Auth[] $auths Global auth rows about to be deleted.
+	 *
+	 * @return Auth[] The rows to delete.
+	 * @throws Exception
+	 */
+	private function keep_admin_tools_login( array $auths ) {
+		if ( ! empty( Auth::get_global_admin_tools_auth() ) || count( $auths ) < count( Auth::get_global_auths() ) || ! $this->admin_tools_in_use() ) {
+			return $auths;
+		}
+
+		foreach ( $auths as $i => $auth ) {
+			if ( 'easyengine' === $auth->username ) {
+				$auth->site_url = 'default_admin_tools';
+				$auth->save();
+				EE::log( 'The easyengine user no longer protects the sites and stays as the admin-tools auth.' );
+				unset( $auths[ $i ] );
+				break;
+			}
+		}
+
+		return $auths;
 	}
 
 	/**
@@ -272,34 +302,39 @@ class Auth_Command extends EE_Command {
 	 */
 	private function generate_global_auth_files() {
 
+		$dir                     = EE_ROOT_DIR . '/services/nginx-proxy/htpasswd';
 		$global_admin_tools_auth = Auth::get_global_admin_tools_auth();
+		$auths                   = Auth::get_global_auths();
 
-		if ( ! empty( $global_admin_tools_auth ) ) {
-			write_htpasswd_file( 'default_admin_tools', $global_admin_tools_auth );
-		} else {
-			$auths = Auth::get_global_auths();
+		// Admin tools use default_admin_tools when it exists and fall back to `default` otherwise; the global auth never changes their users.
+		$admin_tools_file = ! empty( $global_admin_tools_auth ) && ( write_htpasswd_file( 'default_admin_tools', $global_admin_tools_auth ) || is_file( $dir . '/default_admin_tools' ) );
 
-			if ( empty( $auths ) ) {
-				$this->fs->remove( EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/default_admin_tools' );
-				$this->fs->remove( EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/default' );
+		if ( empty( $auths ) ) {
+			if ( empty( $global_admin_tools_auth ) ) {
+				$this->fs->remove( [ $dir . '/default', $dir . '/default_admin_tools' ] );
 				$this->regen_admin_tools_auth();
-			} elseif ( write_htpasswd_file( 'default', $auths ) ) {
-				// Admin tools prefer default_admin_tools, so drop it only once `default` is written; on failure both files keep protecting.
-				$this->fs->remove( EE_ROOT_DIR . '/services/nginx-proxy/htpasswd/default_admin_tools' );
+			} elseif ( $admin_tools_file ) {
+				$this->fs->remove( $dir . '/default' );
+			} elseif ( is_file( $dir . '/default' ) ) {
+				// Without either file the proxy would serve admin tools without auth.
+				EE::warning( 'Kept htpasswd/default, as htpasswd/default_admin_tools could not be written; run the command again.' );
 			}
+		} elseif ( write_htpasswd_file( 'default', $auths ) && empty( $global_admin_tools_auth ) ) {
+			// A default_admin_tools file without rows is stale; drop it only once `default` is written, so admin tools stay protected.
+			$this->fs->remove( $dir . '/default_admin_tools' );
+		}
 
-			$sites = array_unique(
-				array_column(
-					Auth::all( [ 'site_url' ] ),
-					'site_url'
-				)
-			);
+		$sites = array_unique(
+			array_column(
+				Auth::all( [ 'site_url' ] ),
+				'site_url'
+			)
+		);
 
-			foreach ( $sites as $site ) {
-				// The global files were handled above.
-				if ( ! is_reserved_proxy_file_name( $site ) ) {
-					generate_site_auth_files( $site, \EE\Model\Site::find( $site ) ?: null );
-				}
+		foreach ( $sites as $site ) {
+			// The global files were handled above.
+			if ( ! is_reserved_proxy_file_name( $site ) ) {
+				generate_site_auth_files( $site, \EE\Model\Site::find( $site ) ?: null );
 			}
 		}
 	}
@@ -347,7 +382,7 @@ class Auth_Command extends EE_Command {
 	 *
 	 * ## EXAMPLES
 	 *
-	 *     # Update auth password on global auth with default username and random password
+	 *     # Set a new random password for the admin-tools user (a global user named easyengine is updated instead, if there is one)
 	 *     $ ee auth update global --user=easyengine
 	 *
 	 *     # Update auth password on site with predefined username and password
@@ -390,7 +425,11 @@ class Auth_Command extends EE_Command {
 
 		$pass = EE\Utils\get_flag_value( $assoc_args, 'pass', EE\Utils\random_password() );
 
-		$auths = $this->get_auths( $site_url, $user );
+		$auths = $this->get_auths( $site_url, $user, 'default' !== $site_url );
+		if ( empty( $auths ) ) {
+			// `global` also covers the admin-tools user, as in the help example.
+			$auths = Auth::where( [ 'site_url' => 'default_admin_tools', 'username' => $user ] ) ?: $this->get_auths( $site_url, $user );
+		}
 
 		foreach ( $auths as $auth ) {
 			$auth->password = $pass;
@@ -533,6 +572,9 @@ class Auth_Command extends EE_Command {
 		if ( ! $ip ) {
 			$user = EE\Utils\get_flag_value( $assoc_args, 'user' );
 			$auths = $this->get_auths( $site_url, $user );
+			if ( 'default' === $site_url ) {
+				$auths = $this->keep_admin_tools_login( $auths );
+			}
 
 			foreach ( $auths as $auth ) {
 				$auth->delete();
@@ -644,10 +686,7 @@ class Auth_Command extends EE_Command {
 			$formatter = new EE\Formatter( $assoc_args, [ 'ip' ] );
 			$formatter->display_items( $whitelists );
 		} else {
-			$auths_global = Auth::get_global_admin_tools_auth();
-			if ( empty( $auths_global ) ) {
-				$auths_global = Auth::get_global_auths();
-			}
+			$auths_global = array_merge( Auth::get_global_admin_tools_auth(), Auth::get_global_auths() );
 
 			if ( empty( $auths_global ) ) {
 				EE::error( 'Auth does not exists on global.' );
