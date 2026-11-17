@@ -13,6 +13,7 @@ Feature: Auth files migration on upgrade
     And the auth files of "bh-auth-command-mig.test" are as an older auth-command wrote them
     And the container migration "20260924120000_auth-command_regenerate_site_auth_files.php" is not recorded
     And the EasyEngine option "version" is set to "4.12.0"
+    And the next image migration pulls at least one image
     And Docker Hub is unreachable
     When I run "bin/ee cli info"
     Then the command should fail

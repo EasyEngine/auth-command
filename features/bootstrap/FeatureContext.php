@@ -1167,6 +1167,47 @@ class FeatureContext implements Context
 	}
 
 	/**
+	 * Without a pull, a blocked registry can't fail the image migration: if every image it would pull
+	 * already runs (or is recorded) at its target tag, record a stale tag for one that isn't running.
+	 *
+	 * @Given the next image migration pulls at least one image
+	 */
+	public function theNextImageMigrationPullsAtLeastOneImage()
+	{
+		$running = [];
+		foreach ( array_filter( explode( "\n", (string) shell_exec( "docker ps --format '{{.Image}}'" ) ) ) as $image ) {
+			$parts                = explode( ':', $image, 2 );
+			$running[ $parts[0] ] = isset( $parts[1] ) ? $parts[1] : null;
+		}
+		$free   = null;
+		$global = [ 'easyengine/nginx-proxy', 'easyengine/mariadb', 'easyengine/redis', 'easyengine/cron' ];
+		foreach ( json_decode( file_get_contents( EE_ROOT . '/img-versions.json' ), true ) as $image => $version ) {
+			// Never pulled by the migration.
+			if ( preg_match( '#^easyengine/(php(\d|$)|newrelic-daemon)#', $image ) ) {
+				continue;
+			}
+			// A global service's image is only pulled while it runs: a stopped one keeps its old image, a missing one gets it on creation.
+			if ( in_array( $image, $global, true ) && ! array_key_exists( $image, $running ) ) {
+				continue;
+			}
+			// Running containers take precedence over the options table, as in the migration.
+			$current = array_key_exists( $image, $running ) ? $running[ $image ] : self::option( $image );
+			// An image nothing runs or records isn't pulled, so only a tracked stale tag counts.
+			if ( false !== $current && null !== $current && $current !== $version ) {
+				return;
+			}
+			// Only a tracked image, so the step doesn't start tracking one the stack never recorded.
+			if ( null === $free && false !== $current && ! array_key_exists( $image, $running ) ) {
+				$free = $image;
+			}
+		}
+		if ( null === $free ) {
+			throw new Exception( 'Every image the migration could pull runs at its target tag, so no pull can fail.' );
+		}
+		$this->theEasyEngineOptionIsSetTo( $free, 'v0.0.0-behat-stale' );
+	}
+
+	/**
 	 * @Then the EasyEngine option :key should be :value
 	 */
 	public function theEasyEngineOptionShouldBe($key, $value)
