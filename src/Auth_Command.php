@@ -199,7 +199,7 @@ class Auth_Command extends EE_Command {
 		$user_ips = $this->clean_and_validate_ips( $ips );
 
 		if ( Whitelist::has_ips( $site_url ) ) {
-			EE::error( "Whitelist is already created on $site_url. To update IPs use `ee auth update` instead" );
+			EE::error( sprintf( 'Whitelist is already created on %s. To update IPs use `ee auth update` instead', $this->scope_name( $site_url ) ) );
 		}
 
 		foreach ( $user_ips as $ip ) {
@@ -218,6 +218,19 @@ class Auth_Command extends EE_Command {
 		}
 
 		reload_global_nginx_proxy();
+
+		EE::success( sprintf( 'Whitelist successfully updated for `%s` scope. IPs added: %s.', $this->scope_name( $site_url ), implode( ', ', $user_ips ) ) );
+	}
+
+	/**
+	 * Name of the scope in messages: `global` for the internal `default` key.
+	 *
+	 * @param string $site_url URL of site or `default`.
+	 *
+	 * @return string
+	 */
+	private function scope_name( string $site_url ) {
+		return ( 'default' === $site_url ) ? 'global' : $site_url;
 	}
 
 	/**
@@ -459,7 +472,9 @@ class Auth_Command extends EE_Command {
 	 * @throws Exception
 	 */
 	private function update_whitelist( string $site_url, string $ips ) {
-		$user_ips = $this->clean_and_validate_ips( $ips );
+		$user_ips  = $this->clean_and_validate_ips( $ips );
+		$scope     = $this->scope_name( $site_url );
+		$added_ips = [];
 
 		foreach ( $user_ips as $ip ) {
 			$existing_ips = Whitelist::where(
@@ -470,7 +485,7 @@ class Auth_Command extends EE_Command {
 			);
 
 			if ( ! empty( $existing_ips ) ) {
-				EE::log( $existing_ips[0]->ip . " has already been whitelisted on $site_url. Skipping it." );
+				EE::log( $existing_ips[0]->ip . " has already been whitelisted on $scope. Skipping it." );
 				continue;
 			}
 
@@ -480,6 +495,7 @@ class Auth_Command extends EE_Command {
 					'ip'       => $ip,
 				]
 			);
+			$added_ips[] = $ip;
 		}
 
 		if ( 'default' === $site_url ) {
@@ -490,6 +506,11 @@ class Auth_Command extends EE_Command {
 
 		reload_global_nginx_proxy();
 
+		if ( $added_ips ) {
+			EE::success( sprintf( 'Whitelist successfully updated for `%s` scope. IPs added: %s.', $scope, implode( ', ', $added_ips ) ) );
+		} else {
+			EE::success( sprintf( 'Whitelist unchanged for `%s` scope. All given IPs were already whitelisted.', $scope ) );
+		}
 	}
 
 	/**
@@ -568,6 +589,7 @@ class Auth_Command extends EE_Command {
 		$global   = $this->populate_info( $args, __FUNCTION__ );
 		$site_url = $global ? 'default' : $this->site_data->site_url;
 		$ip       = EE\Utils\get_flag_value( $assoc_args, 'ip' );
+		$scope    = $this->scope_name( $site_url );
 
 		if ( ! $ip ) {
 			$user = EE\Utils\get_flag_value( $assoc_args, 'user' );
@@ -587,9 +609,9 @@ class Auth_Command extends EE_Command {
 			}
 
 			if ( $user ) {
-				$success_message = sprintf( 'http auth successfully removed on %s.', $site_url );
+				$success_message = sprintf( 'http auth successfully removed on %s for user %s.', $scope, $user );
 			} else {
-				$success_message = sprintf( 'http auth successfully removed on %s on %s user', $site_url, $user );
+				$success_message = sprintf( 'http auth successfully removed on %s.', $scope );
 			}
 
 			EE::success( $success_message );
@@ -605,8 +627,15 @@ class Auth_Command extends EE_Command {
 				foreach ( $whitelists as $whitelist ) {
 					$whitelist->delete();
 				}
+
+				if ( $whitelists ) {
+					$success_message = sprintf( 'All whitelisted IPs successfully removed on %s.', $scope );
+				} else {
+					$success_message = sprintf( 'No whitelisted IPs to remove on %s.', $scope );
+				}
 			} else {
-				$user_ips = $this->clean_and_validate_ips( $ip, $site_url );
+				$user_ips    = $this->clean_and_validate_ips( $ip, $site_url );
+				$removed_ips = [];
 
 				foreach ( $user_ips as $ip ) {
 					$existing_ips = Whitelist::where(
@@ -617,7 +646,7 @@ class Auth_Command extends EE_Command {
 					);
 
 					if ( empty( $existing_ips ) ) {
-						EE::log( $ip . " has not been whitelisted on $site_url. Skipping it." );
+						EE::log( $ip . " has not been whitelisted on $scope. Skipping it." );
 						continue;
 					}
 
@@ -629,6 +658,13 @@ class Auth_Command extends EE_Command {
 					);
 
 					$whitelist[0]->delete();
+					$removed_ips[] = $ip;
+				}
+
+				if ( $removed_ips ) {
+					$success_message = sprintf( 'Whitelisted IPs successfully removed on %s: %s.', $scope, implode( ', ', $removed_ips ) );
+				} else {
+					$success_message = sprintf( 'No whitelisted IPs removed on %s. None of the given IPs were whitelisted.', $scope );
 				}
 			}
 
@@ -639,6 +675,7 @@ class Auth_Command extends EE_Command {
 			}
 
 			reload_global_nginx_proxy();
+			EE::success( $success_message );
 		}
 	}
 
