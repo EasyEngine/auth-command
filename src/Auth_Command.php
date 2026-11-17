@@ -586,10 +586,11 @@ class Auth_Command extends EE_Command {
 				generate_site_auth_files( $site_url, $this->site_data );
 			}
 
+			$scope = ( 'default' === $site_url ) ? 'global' : $site_url;
 			if ( $user ) {
-				$success_message = sprintf( 'http auth successfully removed on %s.', $site_url );
+				$success_message = sprintf( 'http auth successfully removed on %s for user %s.', $scope, $user );
 			} else {
-				$success_message = sprintf( 'http auth successfully removed on %s on %s user', $site_url, $user );
+				$success_message = sprintf( 'http auth successfully removed on %s.', $scope );
 			}
 
 			EE::success( $success_message );

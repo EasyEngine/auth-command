@@ -118,7 +118,7 @@ These scenarios assert the fixed behaviour, so they are not in the suite yet and
 
 | Bug | Scenario(s) | Flips with #57 |
 |---|---|---|
-| The delete message swaps the site and user names; the same IP whitelisted globally and on a site gets duplicate `allow` lines | site: "The delete success message names the removed user"; global: "An IP whitelisted globally and on a site appears once…" (the create-when-exists error is asserted as current behaviour in whitelist) | no (messages unchanged; `get_site_whitelist_ips()` still doesn't de-duplicate) |
+| The delete message swapped the site and user names (fixed: `--user` names the user, the plain delete no longer prints "on  user"; asserted in site "Delete one user keeps the others" and "Delete without --user…"); the same IP whitelisted globally and on a site gets duplicate `allow` lines | site: "The delete success message names the removed user"; global: "An IP whitelisted globally and on a site appears once…" (the create-when-exists error is asserted as current behaviour in whitelist) | no (messages unchanged; `get_site_whitelist_ips()` still doesn't de-duplicate) |
 | `create`/`update`/`delete` with `--ip` print no success message | whitelist: "Whitelist commands report success" | no |
 | `ee auth list <site>` fails when there is neither global nor admin-tools auth | global: "A site list works when there is neither global nor admin-tools auth" | no |
 | site-command's `auto_site_name()` returns `http://<site>/` unchanged, so the site is not found | usage: "A site URL with scheme and trailing slash is accepted" | no (site-command) |

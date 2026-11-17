@@ -216,7 +216,7 @@ Feature: Site-scoped HTTP auth users
     Then the command should succeed
     And STDOUT should contain:
       """
-      Success: http auth successfully removed on bh-auth-command-1.test
+      Success: http auth successfully removed on bh-auth-command-1.test for user bh-u1.
       """
     And the auth_users table should not contain a row with:
       | site_url | bh-auth-command-1.test |
@@ -231,6 +231,14 @@ Feature: Site-scoped HTTP auth users
     And I run "bin/ee auth create bh-auth-command-1.test --user=bh-u2 --pass=bh-p2"
     When I run "bin/ee auth delete bh-auth-command-1.test"
     Then the command should succeed
+    And STDOUT should contain:
+      """
+      Success: http auth successfully removed on bh-auth-command-1.test.
+      """
+    And STDOUT should not contain:
+      """
+      for user
+      """
     And STDOUT should contain:
       """
       Reloading global reverse proxy.
