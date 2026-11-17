@@ -279,7 +279,11 @@ Feature: Global HTTP auth and global IP whitelist
     Then the command should succeed
     And STDOUT should contain:
       """
-      {FRONTEND_SUBNET_IP} has already been whitelisted on default. Skipping it.
+      {FRONTEND_SUBNET_IP} has already been whitelisted on global. Skipping it.
+      """
+    And STDOUT should contain:
+      """
+      Success: Whitelist unchanged for `global` scope. All given IPs were already whitelisted.
       """
     And the auth_ips table should have 1 rows with:
       | site_url | default              |
@@ -301,6 +305,10 @@ Feature: Global HTTP auth and global IP whitelist
     And I run "bin/ee auth update global --ip=192.0.2.200,192.0.2.201"
     When I run "bin/ee auth delete global --ip=192.0.2.200"
     Then the command should succeed
+    And STDOUT should contain:
+      """
+      Success: Whitelisted IPs successfully removed on global: 192.0.2.200.
+      """
     And the file "{EE_ROOT_DIR}/services/nginx-proxy/vhost.d/default_acl" should not contain:
       """
       allow 192.0.2.200;
@@ -331,6 +339,10 @@ Feature: Global HTTP auth and global IP whitelist
     Given I run "bin/ee auth delete global --ip"
     When I run "bin/ee auth create global --ip=192.0.2.200,192.0.2.201"
     Then the command should succeed
+    And STDOUT should contain:
+      """
+      Success: Whitelist successfully updated for `global` scope. IPs added: 192.0.2.200, 192.0.2.201.
+      """
     And the file "{EE_ROOT_DIR}/services/nginx-proxy/vhost.d/default_acl" should contain:
       """
       satisfy any;

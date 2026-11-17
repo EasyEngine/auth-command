@@ -12,6 +12,10 @@ Feature: Site-scoped IP whitelists
   Scenario: Create a whitelist with one IP
     When I run "bin/ee auth create bh-auth-command-3.test --ip=192.0.2.1"
     Then the command should succeed
+    And STDOUT should contain:
+      """
+      Success: Whitelist successfully updated for `bh-auth-command-3.test` scope. IPs added: 192.0.2.1.
+      """
     And STDERR should not contain:
       """
       nginx config test failed
@@ -180,6 +184,10 @@ Feature: Site-scoped IP whitelists
       """
       192.0.2.1 has already been whitelisted on bh-auth-command-3.test. Skipping it.
       """
+    And STDOUT should contain:
+      """
+      Success: Whitelist successfully updated for `bh-auth-command-3.test` scope. IPs added: 192.0.2.2.
+      """
     And the auth_ips table should have 2 rows with:
       | site_url | bh-auth-command-3.test |
     And the file "{EE_ROOT_DIR}/services/nginx-proxy/vhost.d/bh-auth-command-3.test_acl" should contain the line "allow 192.0.2.1;" exactly 1 times
@@ -190,6 +198,10 @@ Feature: Site-scoped IP whitelists
     When I run "bin/ee auth update bh-auth-command-3.test --ip=192.0.2.1"
     And I run "bin/ee auth update bh-auth-command-3.test --ip=192.0.2.1"
     Then the command should succeed
+    And STDOUT should contain:
+      """
+      Success: Whitelist unchanged for `bh-auth-command-3.test` scope. All given IPs were already whitelisted.
+      """
     And the auth_ips table should have 1 rows with:
       | site_url | bh-auth-command-3.test |
 
@@ -208,6 +220,10 @@ Feature: Site-scoped IP whitelists
     Given I run "bin/ee auth create bh-auth-command-3.test --ip=192.0.2.1,192.0.2.2,192.0.2.3"
     When I run "bin/ee auth delete bh-auth-command-3.test --ip=192.0.2.1,192.0.2.3"
     Then the command should succeed
+    And STDOUT should contain:
+      """
+      Success: Whitelisted IPs successfully removed on bh-auth-command-3.test: 192.0.2.1, 192.0.2.3.
+      """
     And the auth_ips table should have 1 rows with:
       | site_url | bh-auth-command-3.test |
     And the file "{EE_ROOT_DIR}/services/nginx-proxy/vhost.d/bh-auth-command-3.test_acl" should contain:
@@ -231,6 +247,10 @@ Feature: Site-scoped IP whitelists
       """
       192.0.2.99 has not been whitelisted on bh-auth-command-3.test. Skipping it.
       """
+    And STDOUT should contain:
+      """
+      Success: No whitelisted IPs removed on bh-auth-command-3.test. None of the given IPs were whitelisted.
+      """
     And the auth_ips table should have 1 rows with:
       | site_url | bh-auth-command-3.test |
 
@@ -238,6 +258,10 @@ Feature: Site-scoped IP whitelists
     Given I run "bin/ee auth create bh-auth-command-3.test --ip=192.0.2.1,192.0.2.2"
     When I run "bin/ee auth delete bh-auth-command-3.test --ip"
     Then the command should succeed
+    And STDOUT should contain:
+      """
+      Success: All whitelisted IPs successfully removed on bh-auth-command-3.test.
+      """
     And the auth_ips table should not contain a row with:
       | site_url | bh-auth-command-3.test |
     And the file "{EE_ROOT_DIR}/services/nginx-proxy/vhost.d/bh-auth-command-3.test_acl" should not contain:
@@ -256,6 +280,10 @@ Feature: Site-scoped IP whitelists
   Scenario: Deleting the whitelist of a site with no whitelist is a no-op
     When I run "bin/ee auth delete bh-auth-command-3.test --ip"
     Then the command should succeed
+    And STDOUT should contain:
+      """
+      Success: No whitelisted IPs to remove on bh-auth-command-3.test.
+      """
     And the auth_ips table should not contain a row with:
       | site_url | bh-auth-command-3.test |
 
