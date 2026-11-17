@@ -295,7 +295,7 @@ Feature: Global HTTP auth and global IP whitelist
     Then the command should fail
     And STDERR should contain:
       """
-      Whitelist is already created on default. To update IPs use `ee auth update` instead
+      Whitelist is already created on global. To update IPs use `ee auth update` instead
       """
     And the auth_ips table should not contain a row with:
       | ip | 192.0.2.201 |

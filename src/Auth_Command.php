@@ -199,7 +199,7 @@ class Auth_Command extends EE_Command {
 		$user_ips = $this->clean_and_validate_ips( $ips );
 
 		if ( Whitelist::has_ips( $site_url ) ) {
-			EE::error( "Whitelist is already created on $site_url. To update IPs use `ee auth update` instead" );
+			EE::error( sprintf( 'Whitelist is already created on %s. To update IPs use `ee auth update` instead', $this->scope_name( $site_url ) ) );
 		}
 
 		foreach ( $user_ips as $ip ) {
